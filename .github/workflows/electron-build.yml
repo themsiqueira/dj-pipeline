@@ -1,0 +1,43 @@
+# Builds packaged Electron apps per OS. Each job runs fetch-tools on that runner so vendor/
+# contains the correct yt-dlp/ffmpeg binaries (do not cross-build Windows from macOS vendor/).
+name: Electron build
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run electron:build:mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: electron-dist-macos
+          path: dist/
+          if-no-files-found: error
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run electron:build:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: electron-dist-windows
+          path: dist/
+          if-no-files-found: error

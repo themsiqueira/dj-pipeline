@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YouTube DJ Pipeline</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>YouTube DJ Pipeline</h1>
+      <p class="hint">Playlist URL, then choose an output folder (MP3s and Rekordbox XML).</p>
+      <label class="field">
+        <span>Playlist URL</span>
+        <input type="url" id="playlistUrl" placeholder="https://www.youtube.com/playlist?list=…" />
+      </label>
+      <label class="field">
+        <span>Output folder</span>
+        <div class="row">
+          <input type="text" id="outputDir" readonly />
+          <button type="button" id="browseBtn">Browse…</button>
+        </div>
+      </label>
+      <div class="actions">
+        <button type="button" id="startBtn">Start</button>
+        <button type="button" id="stopBtn" disabled>Stop</button>
+        <button type="button" id="openBtn" disabled>Open output folder</button>
+      </div>
+      <p id="progress" class="progress" aria-live="polite"></p>
+      <pre id="log" class="log"></pre>
+    </main>
+    <script src="renderer.js"></script>
+  </body>
+</html>

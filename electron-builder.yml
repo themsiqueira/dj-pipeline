@@ -1,0 +1,24 @@
+appId: com.youtubedj.pipeline
+productName: YouTube DJ Pipeline
+# Signing / notarization (macOS + Windows Authenticode): https://www.electron.build/code-signing
+directories:
+  output: dist
+files:
+  - src/**/*
+  - electron/**/*
+  - package.json
+extraResources:
+  - from: vendor
+    to: vendor
+mac:
+  category: public.app-category.music
+  target:
+    - dmg
+    - zip
+win:
+  target:
+    - nsis
+    - zip
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

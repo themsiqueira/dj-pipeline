@@ -1,0 +1,23 @@
+{
+  "name": "youtube-dj-pipeline",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "electron/main.mjs",
+  "scripts": {
+    "run": "node src/run.js",
+    "fetch-tools": "node scripts/fetch-native-tools.mjs",
+    "electron:dev": "electron .",
+    "electron:build": "npm run fetch-tools && electron-builder",
+    "electron:build:mac": "npm run fetch-tools && electron-builder --mac",
+    "electron:build:win": "npm run fetch-tools && electron-builder --win"
+  },
+  "dependencies": {
+    "node-id3": "^0.2.6",
+    "xmlbuilder2": "^3.1.1"
+  },
+  "devDependencies": {
+    "electron": "^34.3.0",
+    "electron-builder": "^25.1.8",
+    "ffmpeg-static": "^5.2.0"
+  }
+}

@@ -1,0 +1,7 @@
+services:
+  youtube-dj:
+    build: .
+    volumes:
+      - ./output:/app/output
+    command: ["node", "src/run.js", "${PLAYLIST_URL}"]
+

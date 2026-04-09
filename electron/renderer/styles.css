@@ -23,6 +23,31 @@ h1 {
   margin: 0 0 0.35rem;
 }
 
+.setup-banner {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.75rem;
+  background: #2a1e18;
+  border: 1px solid #6a4030;
+  border-radius: 6px;
+}
+
+.setup-banner.hidden {
+  display: none;
+}
+
+.setup-banner-text {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: #f0c8b8;
+}
+
+.setup-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .hint {
   margin: 0 0 1rem;
   color: #9898a8;
@@ -103,6 +128,48 @@ button:disabled {
   margin: 0 0 0.5rem;
   font-size: 0.85rem;
   color: #b4b4c8;
+}
+
+.failures-section {
+  margin: 0 0 0.75rem;
+  padding: 0.65rem 0.75rem;
+  background: #1a1418;
+  border: 1px solid #4a3038;
+  border-radius: 6px;
+}
+
+.failures-section.hidden {
+  display: none;
+}
+
+.failures-heading {
+  margin: 0 0 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #f0a0a8;
+}
+
+.failures-note {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  color: #9898a8;
+}
+
+.failures-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: #d8d0d4;
+}
+
+.failures-list li {
+  margin-bottom: 0.45rem;
+}
+
+.failures-list .fail-url {
+  word-break: break-all;
+  color: #a8b8f0;
 }
 
 .log {

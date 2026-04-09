@@ -7,9 +7,9 @@
     "run": "node src/run.js",
     "fetch-tools": "node scripts/fetch-native-tools.mjs",
     "electron:dev": "electron .",
-    "electron:build": "npm run fetch-tools && electron-builder",
-    "electron:build:mac": "npm run fetch-tools && electron-builder --mac",
-    "electron:build:win": "npm run fetch-tools && electron-builder --win"
+    "electron:build": "npm run fetch-tools && electron-builder --publish never",
+    "electron:build:mac": "npm run fetch-tools && electron-builder --mac --publish never",
+    "electron:build:win": "npm run fetch-tools && electron-builder --win --x64 --publish never"
   },
   "dependencies": {
     "node-id3": "^0.2.6",

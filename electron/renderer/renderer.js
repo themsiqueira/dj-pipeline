@@ -8,21 +8,134 @@ const stopBtn = $("stopBtn");
 const openBtn = $("openBtn");
 const logEl = $("log");
 const progressEl = $("progress");
+const failuresSection = $("failuresSection");
+const failuresList = $("failuresList");
+const failuresCsvNote = $("failuresCsvNote");
+const setupBanner = $("setupBanner");
+const setupBannerText = $("setupBannerText");
+const recheckSetupBtn = $("recheckSetupBtn");
+
+const ERROR_CODE = {
+  INVALID_URL: "INVALID_URL",
+  TOOLS_UNAVAILABLE: "TOOLS_UNAVAILABLE",
+  PLAYLIST_FETCH: "PLAYLIST_FETCH",
+  VIDEO_METADATA: "VIDEO_METADATA",
+  CANCELLED: "CANCELLED",
+  UNKNOWN: "UNKNOWN"
+};
 
 let lastOutputRoot = null;
 let unsubLog = null;
 let unsubProgress = null;
+let setupReady = false;
+let pipelineRunning = false;
 
 function appendLog(line) {
   logEl.textContent += (logEl.textContent ? "\n" : "") + line;
   logEl.scrollTop = logEl.scrollHeight;
 }
 
+function syncStartDisabled() {
+  startBtn.disabled = pipelineRunning || !setupReady;
+}
+
 function setRunning(running) {
-  startBtn.disabled = running;
+  pipelineRunning = running;
+  syncStartDisabled();
   stopBtn.disabled = !running;
   browseBtn.disabled = running;
   playlistInput.disabled = running;
+}
+
+function clearFailuresUi() {
+  failuresSection.classList.add("hidden");
+  failuresList.textContent = "";
+  failuresCsvNote.textContent = "";
+}
+
+function showFailuresUi(failures, csvPath) {
+  if (!failures?.length) {
+    clearFailuresUi();
+    return;
+  }
+  failuresSection.classList.remove("hidden");
+  failuresCsvNote.textContent = csvPath
+    ? `Details saved to CSV: ${csvPath}`
+    : "";
+  failuresList.textContent = "";
+  for (const f of failures) {
+    const li = document.createElement("li");
+    const title = (f.title || "").trim() || "(unknown title)";
+    li.innerHTML = `<strong>${escapeHtml(title)}</strong><br /><span class="fail-url">${escapeHtml(
+      f.url || ""
+    )}</span><br />${escapeHtml(f.reason || "")}`;
+    failuresList.appendChild(li);
+  }
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatSetupIssues(status) {
+  const parts = [];
+  if (!status.ytDlp?.ok && status.ytDlp?.error) {
+    parts.push(status.ytDlp.error);
+  }
+  if (!status.ffmpeg?.ok && status.ffmpeg?.error) {
+    parts.push(status.ffmpeg.error);
+  }
+  return parts.join("\n\n") || "yt-dlp or ffmpeg could not be verified.";
+}
+
+async function refreshSetup() {
+  try {
+    const status = await window.ytDj.checkSetup();
+    setupReady = !!status?.ok;
+    if (setupReady) {
+      setupBanner.classList.add("hidden");
+      setupBannerText.textContent = "";
+    } else {
+      setupBanner.classList.remove("hidden");
+      setupBannerText.textContent = formatSetupIssues(status);
+    }
+  } catch (e) {
+    setupReady = false;
+    setupBanner.classList.remove("hidden");
+    setupBannerText.textContent = String(e?.message || e || "Could not check tools.");
+  }
+  syncStartDisabled();
+}
+
+function logPipelineFailure(result) {
+  if (result.cancelled || result.code === ERROR_CODE.CANCELLED) {
+    appendLog("Stopped.");
+    return;
+  }
+  if (result.code === ERROR_CODE.TOOLS_UNAVAILABLE) {
+    appendLog("yt-dlp or ffmpeg is not available. Fix the setup (see the notice above), then click Check again.");
+    if (result.error) {
+      appendLog(result.error);
+    }
+    return;
+  }
+  if (result.code === ERROR_CODE.INVALID_URL) {
+    appendLog(result.error || "Invalid playlist URL.");
+    return;
+  }
+  if (result.code === ERROR_CODE.PLAYLIST_FETCH) {
+    appendLog(result.error || "Could not load the playlist.");
+    return;
+  }
+  if (result.code === ERROR_CODE.VIDEO_METADATA) {
+    appendLog(result.error || "Could not read video metadata.");
+    return;
+  }
+  appendLog(result.error || "Failed.");
 }
 
 async function initDefaults() {
@@ -38,6 +151,16 @@ browseBtn.addEventListener("click", async () => {
   const picked = await window.ytDj.pickOutputDir();
   if (picked) {
     outputInput.value = picked;
+  }
+});
+
+recheckSetupBtn.addEventListener("click", () => {
+  refreshSetup();
+});
+
+window.addEventListener("focus", () => {
+  if (!pipelineRunning) {
+    refreshSetup();
   }
 });
 
@@ -66,6 +189,7 @@ startBtn.addEventListener("click", async () => {
 
   logEl.textContent = "";
   progressEl.textContent = "";
+  clearFailuresUi();
   openBtn.disabled = true;
   lastOutputRoot = null;
 
@@ -81,7 +205,19 @@ startBtn.addEventListener("click", async () => {
   try {
     result = await window.ytDj.start({ playlistUrl, outputRoot });
     if (!result.ok) {
-      appendLog(result.error || "Failed.");
+      logPipelineFailure(result);
+      if (result.code === ERROR_CODE.TOOLS_UNAVAILABLE) {
+        await refreshSetup();
+      }
+    } else if (result.failures?.length) {
+      showFailuresUi(result.failures, result.csvPath);
+      const saved = result.successCount ?? 0;
+      const failed = result.failures.length;
+      appendLog(`Done: ${saved} saved, ${failed} failed.`);
+    } else if ((result.totalCount ?? 0) === 0) {
+      appendLog("Done: playlist had no items.");
+    } else {
+      appendLog("Done: all tracks completed successfully.");
     }
   } catch (e) {
     appendLog(String(e?.message || e));
@@ -96,4 +232,7 @@ startBtn.addEventListener("click", async () => {
   }
 });
 
-initDefaults();
+(async () => {
+  await initDefaults();
+  await refreshSetup();
+})();

@@ -3,6 +3,8 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import { runPlaylist, normalizePlaylistUrl, assertValidYouTubePlaylistUrl } from "../src/pipeline.js";
+import { getToolSetupStatus } from "../src/toolCheck.js";
+import { toPipelineError, PIPELINE_ERROR } from "../src/pipelineErrors.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, "..");
@@ -91,6 +93,11 @@ ipcMain.handle("app:getDefaultOutputDir", () =>
   path.join(app.getPath("documents"), "YouTube DJ Pipeline output")
 );
 
+ipcMain.handle("app:checkSetup", async () => {
+  applyBundledToolPaths();
+  return getToolSetupStatus();
+});
+
 ipcMain.handle("pipeline:cancel", () => {
   abortController?.abort();
   return true;
@@ -114,17 +121,30 @@ ipcMain.handle("pipeline:start", async (event, { playlistUrl, outputRoot }) => {
   try {
     const normalized = normalizePlaylistUrl(playlistUrl);
     assertValidYouTubePlaylistUrl(normalized);
-    await runPlaylist({
+    const summary = await runPlaylist({
       playlistUrl: normalized,
       outputRoot: root,
       signal: abortController.signal,
       onLog: sendLog,
       onProgress: sendProg
     });
-    return { ok: true, outputRoot: root };
+    return {
+      ok: true,
+      outputRoot: root,
+      failures: summary.failures,
+      csvPath: summary.csvPath,
+      xmlPath: summary.xmlPath,
+      successCount: summary.successCount,
+      totalCount: summary.totalCount
+    };
   } catch (e) {
-    const msg = e?.message || String(e);
-    sendLog(msg);
-    return { ok: false, error: msg, outputRoot: root };
+    const { code, message } = toPipelineError(e);
+    return {
+      ok: false,
+      error: message,
+      code,
+      cancelled: code === PIPELINE_ERROR.CANCELLED,
+      outputRoot: root
+    };
   }
 });

@@ -19,8 +19,10 @@ An end-to-end pipeline for converting YouTube playlists into DJ-ready MP3 files 
 3. **Thumbnail**: Cover art when available (optional; failures are non-fatal).
 4. **Audio download**: Best audio stream per video (YouTube client args tuned to reduce CDN 403 issues).
 5. **LUFS normalization**: Two-pass `loudnorm` then MP3 encode via `ffmpeg`.
-6. **ID3 + Rekordbox XML**: Tagged MP3s and `iTunes Music Library.xml`.
+6. **ID3 + Rekordbox XML**: Tagged MP3s and `iTunes Music Library.xml` (only if at least one track completed).
 7. **Cleanup**: Temp audio and thumbnails removed after each track.
+
+If a track fails (unavailable video, network error, etc.), the pipeline **continues** with the rest of the playlist. Failed entries are listed in the Electron UI and written to **`download_failures.csv`** in the output folder (`url`, `title`, `reason`).
 
 ### Output structure
 
@@ -35,6 +37,7 @@ output/
 │   └── VIDEO_ID.loudnorm.json
 ├── rekordbox/
 │   └── iTunes Music Library.xml
+├── download_failures.csv   # only when one or more tracks failed
 └── tmp/                    # transient downloads (cleaned per track)
     └── thumbnails/
 ```
@@ -107,6 +110,8 @@ Paste the URL **without** shell escapes; quotes are enough.
 
 Output goes to `./output` relative to the current working directory.
 
+**Exit codes (CLI):** `0` if at least one track was saved (partial success is OK). `1` on fatal errors (invalid URL, playlist fetch failed, tools missing, user cancel) or when **no** tracks completed successfully.
+
 ### Desktop app (Electron)
 
 **Development** (after `npm install`; run `npm run fetch-tools` once so `vendor/` exists, or rely on system `yt-dlp` / `ffmpeg`):
@@ -123,18 +128,20 @@ npm run electron:dev
 |---------|-------------|
 | `npm run electron:build` | Current OS (macOS → `.dmg` + `.zip`; Windows → NSIS Setup + `.zip`) |
 | `npm run electron:build:mac` | macOS only (e.g. CI on `macos-latest`) |
-| `npm run electron:build:win` | Windows only (e.g. CI on `windows-latest` or a Windows PC) |
+| `npm run electron:build:win` | **Windows x64** only (CI on `windows-latest` or a Windows PC). Uses `electron-builder --win --x64` so Intel/AMD PCs get the right build. |
 
 Artifacts land in `dist/`:
 
 - **macOS**: `.dmg`, `-mac.zip` (names depend on arch, e.g. `arm64`)
-- **Windows**: NSIS installer (e.g. `YouTube DJ Pipeline Setup x.x.x.exe`) and a `.zip` of the unpacked app
+- **Windows (x64)**: NSIS installer (e.g. `YouTube DJ Pipeline Setup x.x.x.exe`) and a portable `.zip` (e.g. `…-1.0.0-win.zip` when only x64 is built). These run on typical Intel/AMD PCs. **Do not** use an **`arm64-win`** zip on an x64 machine—see troubleshooting below.
 
 **Code signing**: Optional on both platforms; reduces Gatekeeper / SmartScreen friction. See [electron-builder code signing](https://www.electron.build/code-signing) (macOS notarization, Windows Authenticode / `CSC_LINK`).
 
 **CI**: [`.github/workflows/electron-build.yml`](.github/workflows/electron-build.yml) runs `electron:build:mac` and `electron:build:win` on separate runners and uploads `dist/` as artifacts.
 
-In the app: enter the playlist URL, pick an output folder, **Start**, then **Open output folder** when finished. **Stop** aborts between tracks.
+In the app: enter the playlist URL, pick an output folder, **Start**, then **Open output folder** when finished. **Stop** aborts between tracks. If some tracks fail, a **Failed tracks** section lists them and points to **`download_failures.csv`** when it was written.
+
+**Windows installer (NSIS):** If the installer says it cannot close the app, **quit YouTube DJ Pipeline completely** (all windows), then click **Retry**. Reinstalling while the app is running can block the installer.
 
 ### One-click launchers
 
@@ -174,7 +181,7 @@ YTDLP_COOKIES_FROM_BROWSER=chrome npm run run -- "PLAYLIST_URL"
 
 ### LUFS target
 
-Defaults are applied in the `loudnormTwoPassToMp3` call in [`src/pipeline.js`](src/pipeline.js) (and the function default in [`src/audio.js`](src/audio.js)):
+Defaults are applied in the `loudnormTwoPassToMp3` call in [`src/pipeline.js`](src/pipeline.js) (per-track processing) and the function default in [`src/audio.js`](src/audio.js):
 
 ```javascript
 loudnormTwoPassToMp3(tmpFile, outMp3, loudnormLog, {
@@ -188,9 +195,10 @@ Common choices: **-9 LUFS** (DJ-oriented) vs **-14 LUFS** (closer to streaming l
 
 ## Troubleshooting
 
-### `yt-dlp: command not found` / `ffmpeg: command not found`
+### `yt-dlp: command not found` / `ffmpeg: command not found` / `spawnSync yt-dlp ENOENT`
 
 - Install via Homebrew / PATH on Windows, **or** run `npm run fetch-tools` and set `YOUTUBE_DJ_YTDLP` / `YOUTUBE_DJ_FFMPEG`, **or** use the packaged Electron app.
+- Packaged builds embed tools under `resources\vendor` (Windows) or `Resources/vendor` (macOS). If that folder is missing the `.exe` / binaries, rebuild on **Windows** with `npm run electron:build:win` (or CI `windows-latest`) so `fetch-tools` fetched the correct files before packaging.
 
 ### `HTTP Error 403: Forbidden` / YouTube download failures
 
@@ -210,6 +218,13 @@ Optional; the run continues without cover art. Check network, video availability
 ### macOS: app from `.dmg` won’t open (unsigned build)
 
 Unsigned local builds may trigger Gatekeeper. Right-click the app → **Open**, or adjust Security & Privacy settings. For distribution outside your machine, plan for Apple code signing and notarization.
+
+### Windows: app does not start or closes immediately (wrong CPU architecture)
+
+Most Windows PCs are **x64** (Intel/AMD). Use the **x64** build: NSIS **`YouTube DJ Pipeline Setup x.x.x.exe`** or the **`…-win.zip`** from `npm run electron:build:win` / the `windows-latest` CI job—not a file named **`…-arm64-win.zip`**.
+
+- If you accidentally install an **`arm64-win`** build (common when `electron-builder --win` was run from an Apple Silicon Mac without `--x64`), it will **not** run on an x64 PC. Rebuild with `npm run electron:build:win` (now pinned to **`--x64`**) or download the **Windows** artifact from [GitHub Actions](.github/workflows/electron-build.yml) (`windows-latest` produces x64).
+- For releases, prefer CI or a Windows machine so `vendor\yt-dlp.exe` and `vendor\ffmpeg.exe` match Windows (see **Production build** above).
 
 ### Windows: SmartScreen or “Windows protected your PC”
 

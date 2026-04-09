@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("ytDj", {
   pickOutputDir: () => ipcRenderer.invoke("dialog:pickOutputDir"),
   getDefaultOutputDir: () => ipcRenderer.invoke("app:getDefaultOutputDir"),
+  checkSetup: () => ipcRenderer.invoke("app:checkSetup"),
   start: (opts) => ipcRenderer.invoke("pipeline:start", opts),
   cancel: () => ipcRenderer.invoke("pipeline:cancel"),
   openPath: (p) => ipcRenderer.invoke("shell:openPath", p),

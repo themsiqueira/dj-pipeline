@@ -23,12 +23,6 @@ export function youtubeYtDlpArgs(playerClientSpec = DEFAULT_YOUTUBE_PLAYER_CLIEN
 /** Alternate player_client list for a single retry after HTTP 403 on the media URL. */
 export const YOUTUBE_YTDLP_RETRY_PLAYER_CLIENT = "android,web";
 
-function stderrLooksLike403Forbidden(err) {
-  const chunks = [err.stderr, err.stdout, err.message].filter(Boolean);
-  const text = chunks.map((c) => (typeof c === "string" ? c : String(c))).join("\n");
-  return /403|Forbidden/i.test(text);
-}
-
 /**
  * @param {string} playlistUrl
  * @param {string[]} [extraArgs]

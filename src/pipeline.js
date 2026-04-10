@@ -116,7 +116,27 @@ export async function runPlaylist({ playlistUrl, outputRoot, signal, onLog, onPr
       }
 
       const entry = entries[i];
-      const videoId = entry.id;
+      const videoId = entry?.id != null && String(entry.id).trim() !== "" ? String(entry.id).trim() : "";
+      if (!videoId) {
+        const reason = "Playlist entry has no video id (private/deleted or unsupported entry type).";
+        const entryUrl =
+          typeof entry?.url === "string" && /^https?:\/\//i.test(entry.url) ? entry.url : "";
+        failures.push({
+          index: i + 1,
+          url: entryUrl || playlistUrl,
+          title: String(entry?.title || "").trim() || "(unknown)",
+          reason
+        });
+        log("");
+        log(`[${i + 1}/${total}] ${entry?.title || "(no id)"}`);
+        log(`  Skipped: ${reason}`);
+        if (typeof onProgress === "function") {
+          onProgress({ current: i + 1, total, title: String(entry?.title || "").trim() });
+        }
+        await Promise.resolve();
+        continue;
+      }
+
       const videoUrl = buildVideoUrl(videoId);
       let rowTitle = entry.title || "";
 

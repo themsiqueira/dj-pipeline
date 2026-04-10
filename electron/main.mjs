@@ -10,11 +10,25 @@ import { killAllPipelineChildren } from "../src/pipelineChildren.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, "..");
 
+/**
+ * Bundled tools live in extraResources → resources/vendor (see electron-builder.yml).
+ * Also check vendor next to the .exe for unusual layouts / portable copies.
+ */
 function vendorBaseDir() {
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, "vendor");
+  if (!app.isPackaged) {
+    return path.join(projectRoot, "vendor");
   }
-  return path.join(projectRoot, "vendor");
+  const win = process.platform === "win32";
+  const marker = win ? "yt-dlp.exe" : "yt-dlp";
+  const exeDir = path.dirname(process.execPath);
+  const resourcesPath = process.resourcesPath || path.join(exeDir, "resources");
+  const candidates = [path.join(resourcesPath, "vendor"), path.join(exeDir, "vendor")];
+  for (const dir of candidates) {
+    if (fs.existsSync(path.join(dir, marker))) {
+      return dir;
+    }
+  }
+  return candidates[0];
 }
 
 /** Set env to bundled tools (fast; no disk chmod). */

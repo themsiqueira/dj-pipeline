@@ -5,7 +5,11 @@
  *
  * Set VENDOR_ARCH to match the CPU arch of the packaged app (arm64 | x64 | ia32).
  * Defaults to process.arch. When it differs from the host (e.g. x64 app on Apple Silicon),
- * ffmpeg is downloaded from a pinned URL (macOS Intel) or GitHub (Windows ARM64).
+ * ffmpeg is downloaded from a pinned URL (macOS Intel) or GitHub (Windows).
+ *
+ * Set VENDOR_PLATFORM to the OS you are packaging for (win32 | darwin | linux) when it
+ * differs from the host — e.g. electron:build:win sets VENDOR_PLATFORM=win32 so vendor/
+ * gets yt-dlp.exe and ffmpeg.exe even if you run fetch-tools on macOS.
  */
 import fs from "fs";
 import path from "path";
@@ -20,6 +24,15 @@ fs.mkdirSync(vendor, { recursive: true });
 const hostPlatform = process.platform;
 const hostArch = normalizeArch(process.arch);
 const vendorArch = normalizeArch(process.env.VENDOR_ARCH || process.arch);
+
+function normalizePlatform(p) {
+  const x = String(p || "").toLowerCase();
+  if (x === "win32" || x === "windows") return "win32";
+  if (x === "darwin" || x === "macos" || x === "osx") return "darwin";
+  return x;
+}
+
+const vendorPlatform = normalizePlatform(process.env.VENDOR_PLATFORM || hostPlatform);
 
 /** Pinned Intel macOS static build (zip contains `ffmpeg` at root). Redirects to CDN. */
 const FFMPEG_DARWIN_X64_ZIP =
@@ -37,6 +50,9 @@ function normalizeArch(arch) {
 }
 
 function canUseFfmpegStatic() {
+  if (vendorPlatform !== hostPlatform) {
+    return false;
+  }
   if (hostPlatform === "win32" && vendorArch === "arm64") {
     return false;
   }
@@ -117,8 +133,45 @@ async function fetchBtbNWinArm64GplZip() {
   return pick.browser_download_url;
 }
 
+async function fetchBtbNWin64GplZip() {
+  const override = process.env.FFMPEG_WIN_X64_URL?.trim();
+  if (override) {
+    return override;
+  }
+  const r = await fetch("https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest");
+  if (!r.ok) {
+    throw new Error(`BtbN FFmpeg-Builds releases/latest failed: HTTP ${r.status}`);
+  }
+  const j = await r.json();
+  const assets = j.assets || [];
+  const pick =
+    assets.find(
+      (a) =>
+        a.name.endsWith(".zip") &&
+        !a.name.includes("shared") &&
+        a.name.includes("win64") &&
+        !a.name.includes("winarm64") &&
+        a.name.includes("gpl") &&
+        a.name.includes("7.1")
+    ) ||
+    assets.find(
+      (a) =>
+        a.name.endsWith(".zip") &&
+        !a.name.includes("shared") &&
+        a.name.includes("win64") &&
+        !a.name.includes("winarm64") &&
+        a.name.includes("gpl")
+    );
+  if (!pick) {
+    throw new Error(
+      "No win64 GPL zip in BtbN FFmpeg-Builds latest release. Set FFMPEG_WIN_X64_URL."
+    );
+  }
+  return pick.browser_download_url;
+}
+
 async function installFfmpeg() {
-  const ffName = hostPlatform === "win32" ? "ffmpeg.exe" : "ffmpeg";
+  const ffName = vendorPlatform === "win32" ? "ffmpeg.exe" : "ffmpeg";
   const destFf = path.join(vendor, ffName);
 
   if (canUseFfmpegStatic()) {
@@ -127,14 +180,19 @@ async function installFfmpeg() {
       throw new Error("ffmpeg-static did not resolve a binary for this platform");
     }
     fs.copyFileSync(ffmpegPath, destFf);
-    if (hostPlatform !== "win32") {
+    if (vendorPlatform !== "win32") {
       fs.chmodSync(destFf, 0o755);
     }
     console.error("Wrote", destFf, "(ffmpeg-static)");
     return;
   }
 
-  if (hostPlatform === "darwin" && vendorArch === "x64" && hostArch === "arm64") {
+  if (
+    vendorPlatform === "darwin" &&
+    hostPlatform === "darwin" &&
+    vendorArch === "x64" &&
+    hostArch === "arm64"
+  ) {
     const tmpRoot = fs.mkdtempSync(path.join(path.dirname(vendor), "ffmpeg-fetch-"));
     const zipPath = path.join(tmpRoot, "ffmpeg.zip");
     try {
@@ -163,7 +221,7 @@ async function installFfmpeg() {
     return;
   }
 
-  if (hostPlatform === "win32" && vendorArch === "arm64") {
+  if (vendorPlatform === "win32" && vendorArch === "arm64") {
     const tmpRoot = fs.mkdtempSync(path.join(path.dirname(vendor), "ffmpeg-fetch-"));
     const zipPath = path.join(tmpRoot, "ffmpeg.zip");
     try {
@@ -184,9 +242,30 @@ async function installFfmpeg() {
     return;
   }
 
+  if (vendorPlatform === "win32" && vendorArch === "x64" && !canUseFfmpegStatic()) {
+    const tmpRoot = fs.mkdtempSync(path.join(path.dirname(vendor), "ffmpeg-fetch-"));
+    const zipPath = path.join(tmpRoot, "ffmpeg.zip");
+    try {
+      const url = await fetchBtbNWin64GplZip();
+      await downloadToFile(url, zipPath);
+      const extractDir = path.join(tmpRoot, "out");
+      fs.mkdirSync(extractDir, { recursive: true });
+      extractZip(zipPath, extractDir);
+      const found = findBinary(extractDir, "ffmpeg.exe");
+      if (!found) {
+        throw new Error("ffmpeg.exe not found inside Windows x64 zip");
+      }
+      fs.copyFileSync(found, destFf);
+      console.error("Wrote", destFf, "(Windows x64 BtbN build)");
+    } finally {
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+    return;
+  }
+
   throw new Error(
     `Unsupported vendor ffmpeg fetch: host ${hostPlatform}/${hostArch}, ` +
-      `target ${hostPlatform}/${vendorArch}. ` +
+      `target ${vendorPlatform}/${vendorArch}. ` +
       `Build on a machine whose arch matches VENDOR_ARCH, or extend scripts/fetch-native-tools.mjs. ` +
       `Note: Apple Silicon .app with x64 Electron needs VENDOR_ARCH=x64 on an arm64 Mac (Intel ffmpeg zip).`
   );
@@ -195,10 +274,10 @@ async function installFfmpeg() {
 async function fetchYtDlp() {
   let ytdlpUrl;
   let ytdlpName;
-  if (hostPlatform === "darwin") {
+  if (vendorPlatform === "darwin") {
     ytdlpUrl = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos";
     ytdlpName = "yt-dlp";
-  } else if (hostPlatform === "win32") {
+  } else if (vendorPlatform === "win32") {
     ytdlpUrl = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
     ytdlpName = "yt-dlp.exe";
   } else {
@@ -213,13 +292,13 @@ async function fetchYtDlp() {
   }
   const ytdlpPath = path.join(vendor, ytdlpName);
   fs.writeFileSync(ytdlpPath, Buffer.from(await res.arrayBuffer()));
-  if (hostPlatform !== "win32") {
+  if (vendorPlatform !== "win32") {
     fs.chmodSync(ytdlpPath, 0o755);
   }
   console.error("Wrote", ytdlpPath);
 }
 
-console.error(`Vendor arch: ${vendorArch} (host ${hostPlatform}/${hostArch})`);
+console.error(`Vendor target: ${vendorPlatform}/${vendorArch} (host ${hostPlatform}/${hostArch})`);
 
 await fetchYtDlp();
 await installFfmpeg();

@@ -122,7 +122,7 @@ npm run electron:dev
 
 **Production build**
 
-`npm run fetch-tools` downloads **host-native** `yt-dlp` and `ffmpeg` into `vendor/`. Run the build on the same OS you are releasing for so the bundled binaries match (do not build a Windows installer using a `vendor/` folder produced on macOS).
+`npm run fetch-tools` downloads **host-native** `yt-dlp` and `ffmpeg` into `vendor/`. Run the build on the same OS you are releasing for so the bundled binaries match (do not build a Windows installer using a `vendor/` folder produced on macOS). **Windows packaged builds must contain `vendor/yt-dlp.exe` and `vendor/ffmpeg.exe`**—if the app says tools are missing, rebuild after `npm run fetch-tools` on Windows (or use a CI artifact from `windows-latest`).
 
 | Command | When to use |
 |---------|-------------|
@@ -142,6 +142,8 @@ Artifacts land in `dist/`:
 In the app: enter the playlist URL, pick an output folder, **Start**, then **Open output folder** when finished. **Stop** aborts between tracks. If some tracks fail, a **Failed tracks** section lists them and points to **`download_failures.csv`** when it was written.
 
 **Windows installer (NSIS):** If the installer says it cannot close the app, **quit YouTube DJ Pipeline completely** (all windows), then click **Retry**. Reinstalling while the app is running can block the installer.
+
+**Uninstalling (Windows):** The NSIS setup registers the app in **Settings → Apps → Installed apps** (or **Control Panel → Programs and Features** on older Windows) as **YouTube DJ Pipeline**—use **Uninstall** there. You can also run **`Uninstall youtube-dj-pipeline.exe`** from the installation folder (same folder as the app), or use the **Uninstall YouTube DJ Pipeline** shortcut in the **Start menu** folder for this app. The portable **`.zip`** build has no installer or uninstaller; delete the folder to remove it.
 
 ### One-click launchers
 

@@ -14,6 +14,8 @@ files:
 extraResources:
   - from: vendor
     to: vendor
+    filter:
+      - "**/*"
 mac:
   category: public.app-category.music
   target:
@@ -26,3 +28,12 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+  # Name shown in Settings > Apps > Installed apps (Windows 10/11)
+  uninstallDisplayName: "YouTube DJ Pipeline"
+  # Stable GUID helps Windows track the same product across upgrades/uninstalls
+  guid: 8f3c2a1b-9d4e-5f6a-8b7c-0d1e2f3a4b5c
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  # Do not delete %APPDATA% app data on uninstall (user may want logs/settings)
+  deleteAppDataOnUninstall: false
+  include: build/installer.nsh

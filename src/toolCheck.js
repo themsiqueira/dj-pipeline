@@ -4,8 +4,8 @@ import { execFileSync } from "child_process";
 import { getYtDlpExecutable, getFfmpegExecutable } from "./binaries.js";
 
 export const TOOL_SETUP_HINT =
-  "Install yt-dlp and ffmpeg on your PATH, or set YOUTUBE_DJ_YTDLP and YOUTUBE_DJ_FFMPEG to their full executable paths. " +
-  "For the desktop app, run npm run fetch-tools and rebuild on the target OS so vendor/ is bundled in the installer.";
+  "Install yt-dlp and ffmpeg on your PATH, or set env vars YOUTUBE_DJ_YTDLP and YOUTUBE_DJ_FFMPEG to full paths to the executables (names use DJ then YTDLP / FFMPEG). " +
+  "For the desktop app, run npm run fetch-tools on the target OS (Windows needs vendor/yt-dlp.exe and vendor/ffmpeg.exe) then rebuild so resources/vendor is bundled in the installer.";
 
 function looksLikeFilesystemPath(cmd) {
   if (path.isAbsolute(cmd)) {

@@ -1,5 +1,5 @@
-# Builds packaged Electron apps per OS. Each job runs fetch-tools on that runner so vendor/
-# contains the correct yt-dlp/ffmpeg binaries (do not cross-build Windows from macOS vendor/).
+# Builds packaged Electron apps per OS and CPU arch. Each job runs fetch-tools on that runner so vendor/
+# contains matching yt-dlp/ffmpeg binaries (see scripts/fetch-native-tools.mjs, VENDOR_ARCH).
 name: Electron build
 
 on:
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-macos:
+  build-macos-arm64:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,14 +19,30 @@ jobs:
           node-version: "20"
           cache: npm
       - run: npm ci
-      - run: npm run electron:build:mac
+      - run: npm run electron:build:mac:arm64
       - uses: actions/upload-artifact@v4
         with:
-          name: electron-dist-macos
+          name: electron-dist-macos-arm64
           path: dist/
           if-no-files-found: error
 
-  build-windows:
+  build-macos-x64:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run electron:build:mac:x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: electron-dist-macos-x64
+          path: dist/
+          if-no-files-found: error
+
+  build-windows-x64:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,6 +54,24 @@ jobs:
       - run: npm run electron:build:win
       - uses: actions/upload-artifact@v4
         with:
-          name: electron-dist-windows
+          name: electron-dist-windows-x64
+          path: dist/
+          if-no-files-found: error
+
+  build-windows-arm64:
+    runs-on: windows-11-arm
+    env:
+      VENDOR_ARCH: arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run electron:build:win:arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: electron-dist-windows-arm64
           path: dist/
           if-no-files-found: error

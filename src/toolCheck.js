@@ -14,12 +14,17 @@ function looksLikeFilesystemPath(cmd) {
   return cmd.includes(path.sep) || /^[A-Za-z]:[\\/]/.test(cmd);
 }
 
+/** FFmpeg uses `-version`; yt-dlp uses `--version`. */
+const YTDLP_VERSION_ARGS = ["--version"];
+const FFMPEG_VERSION_ARGS = ["-hide_banner", "-version"];
+
 /**
  * @param {string} label
  * @param {string} cmd
+ * @param {string[]} [versionArgs]
  * @returns {{ ok: boolean, command: string, error?: string }}
  */
-export function probeTool(label, cmd) {
+export function probeTool(label, cmd, versionArgs = YTDLP_VERSION_ARGS) {
   if (looksLikeFilesystemPath(cmd) && !fs.existsSync(cmd)) {
     return {
       ok: false,
@@ -28,7 +33,7 @@ export function probeTool(label, cmd) {
     };
   }
   try {
-    execFileSync(cmd, ["--version"], {
+    execFileSync(cmd, versionArgs, {
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 20_000
@@ -54,8 +59,8 @@ export function probeTool(label, cmd) {
  * @returns {{ ok: boolean, hint: string, ytDlp: { ok: boolean, command: string, error?: string }, ffmpeg: { ok: boolean, command: string, error?: string } }}
  */
 export function getToolSetupStatus() {
-  const ytDlp = probeTool("yt-dlp", getYtDlpExecutable());
-  const ffmpeg = probeTool("ffmpeg", getFfmpegExecutable());
+  const ytDlp = probeTool("yt-dlp", getYtDlpExecutable(), YTDLP_VERSION_ARGS);
+  const ffmpeg = probeTool("ffmpeg", getFfmpegExecutable(), FFMPEG_VERSION_ARGS);
   return {
     ok: ytDlp.ok && ffmpeg.ok,
     hint: TOOL_SETUP_HINT,
@@ -65,11 +70,11 @@ export function getToolSetupStatus() {
 }
 
 export function assertYtdlpAndFfmpegAvailable() {
-  const ytDlp = probeTool("yt-dlp", getYtDlpExecutable());
+  const ytDlp = probeTool("yt-dlp", getYtDlpExecutable(), YTDLP_VERSION_ARGS);
   if (!ytDlp.ok) {
     throw new Error(ytDlp.error);
   }
-  const ffmpeg = probeTool("ffmpeg", getFfmpegExecutable());
+  const ffmpeg = probeTool("ffmpeg", getFfmpegExecutable(), FFMPEG_VERSION_ARGS);
   if (!ffmpeg.ok) {
     throw new Error(ffmpeg.error);
   }

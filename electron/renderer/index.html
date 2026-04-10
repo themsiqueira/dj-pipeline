@@ -4,43 +4,60 @@
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
     <title>YouTube DJ Pipeline</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main>
-      <h1>YouTube DJ Pipeline</h1>
+    <div class="app-shell">
+      <header class="app-header">
+        <h1 class="app-title">YouTube DJ Pipeline</h1>
+        <p class="app-subtitle">Download a playlist to MP3, normalize loudness, tag, and export Rekordbox XML.</p>
+      </header>
+
       <section id="setupBanner" class="setup-banner hidden" role="alert" aria-live="polite">
         <p id="setupBannerText" class="setup-banner-text"></p>
         <div class="setup-banner-actions">
-          <button type="button" id="recheckSetupBtn">Check again</button>
+          <button type="button" id="recheckSetupBtn" class="btn btn-secondary">Check again</button>
         </div>
       </section>
-      <p class="hint">Playlist URL, then choose an output folder (MP3s and Rekordbox XML).</p>
-      <label class="field">
-        <span>Playlist URL</span>
-        <input type="url" id="playlistUrl" placeholder="https://www.youtube.com/playlist?list=…" />
-      </label>
-      <label class="field">
-        <span>Output folder</span>
-        <div class="row">
-          <input type="text" id="outputDir" readonly />
-          <button type="button" id="browseBtn">Browse…</button>
+
+      <section class="card" aria-labelledby="export-heading">
+        <h2 id="export-heading" class="card-title">Export</h2>
+        <p class="card-lead">Paste a playlist URL and choose where to save audio and reports.</p>
+
+        <label class="field">
+          <span class="field-label">Playlist URL</span>
+          <input type="url" id="playlistUrl" placeholder="https://www.youtube.com/playlist?list=…" autocomplete="url" />
+        </label>
+        <label class="field">
+          <span class="field-label">Output folder</span>
+          <div class="row">
+            <input type="text" id="outputDir" readonly class="input-readonly" aria-readonly="true" />
+            <button type="button" id="browseBtn" class="btn btn-secondary">Browse…</button>
+          </div>
+        </label>
+
+        <div class="actions">
+          <button type="button" id="startBtn" class="btn btn-primary">Start</button>
+          <button type="button" id="stopBtn" class="btn btn-stop" disabled>Stop</button>
+          <button type="button" id="openBtn" class="btn btn-secondary" disabled>Open output folder</button>
         </div>
-      </label>
-      <div class="actions">
-        <button type="button" id="startBtn">Start</button>
-        <button type="button" id="stopBtn" disabled>Stop</button>
-        <button type="button" id="openBtn" disabled>Open output folder</button>
-      </div>
-      <p id="progress" class="progress" aria-live="polite"></p>
-      <section id="failuresSection" class="failures-section hidden" aria-label="Failed tracks">
-        <h2 class="failures-heading">Failed tracks</h2>
-        <p id="failuresCsvNote" class="failures-note"></p>
-        <ul id="failuresList" class="failures-list"></ul>
+
+        <p id="progress" class="progress" aria-live="polite"></p>
+
+        <section id="failuresSection" class="failures-section hidden" aria-label="Failed tracks">
+          <h3 class="failures-heading">Failed tracks</h3>
+          <p id="failuresCsvNote" class="failures-note"></p>
+          <ul id="failuresList" class="failures-list"></ul>
+        </section>
       </section>
-      <pre id="log" class="log"></pre>
-    </main>
+
+      <details class="log-details" id="logDetails" open>
+        <summary class="log-summary">Activity log</summary>
+        <div id="log" class="log" role="log" aria-label="Pipeline output"></div>
+      </details>
+    </div>
     <script src="renderer.js"></script>
   </body>
 </html>

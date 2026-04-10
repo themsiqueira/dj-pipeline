@@ -5,6 +5,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import { runPlaylist, normalizePlaylistUrl, assertValidYouTubePlaylistUrl } from "../src/pipeline.js";
 import { getToolSetupStatus } from "../src/toolCheck.js";
 import { toPipelineError, PIPELINE_ERROR } from "../src/pipelineErrors.js";
+import { killAllPipelineChildren } from "../src/pipelineChildren.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, "..");
@@ -16,14 +17,27 @@ function vendorBaseDir() {
   return path.join(projectRoot, "vendor");
 }
 
-/** Prefer bundled yt-dlp/ffmpeg in vendor/ when present (packaged app or after fetch-tools). */
-function applyBundledToolPaths() {
+/** Set env to bundled tools (fast; no disk chmod). */
+function applyBundledToolEnv() {
   const base = vendorBaseDir();
   const win = process.platform === "win32";
   const ytdlp = path.join(base, win ? "yt-dlp.exe" : "yt-dlp");
   const ff = path.join(base, win ? "ffmpeg.exe" : "ffmpeg");
   if (fs.existsSync(ytdlp)) {
     process.env.YOUTUBE_DJ_YTDLP = ytdlp;
+  }
+  if (fs.existsSync(ff)) {
+    process.env.YOUTUBE_DJ_FFMPEG = ff;
+  }
+}
+
+/** chmod vendor binaries (can run after first paint). */
+function applyBundledToolPermissions() {
+  const base = vendorBaseDir();
+  const win = process.platform === "win32";
+  const ytdlp = path.join(base, win ? "yt-dlp.exe" : "yt-dlp");
+  const ff = path.join(base, win ? "ffmpeg.exe" : "ffmpeg");
+  if (fs.existsSync(ytdlp)) {
     try {
       fs.chmodSync(ytdlp, 0o755);
     } catch {
@@ -31,7 +45,6 @@ function applyBundledToolPaths() {
     }
   }
   if (fs.existsSync(ff)) {
-    process.env.YOUTUBE_DJ_FFMPEG = ff;
     try {
       fs.chmodSync(ff, 0o755);
     } catch {
@@ -40,19 +53,32 @@ function applyBundledToolPaths() {
   }
 }
 
+/** Prefer bundled yt-dlp/ffmpeg in vendor/ when present (packaged app or after fetch-tools). */
+function applyBundledToolPaths() {
+  applyBundledToolEnv();
+  applyBundledToolPermissions();
+}
+
 let mainWindow = null;
 let abortController = null;
 
 async function createWindow() {
   applyBundledToolPaths();
   mainWindow = new BrowserWindow({
-    width: 720,
-    height: 640,
+    width: 800,
+    height: 720,
+    minWidth: 520,
+    minHeight: 560,
+    show: false,
+    backgroundColor: "#121218",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false
     }
+  });
+  mainWindow.once("ready-to-show", () => {
+    mainWindow.show();
   });
   await mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
 }
@@ -99,6 +125,7 @@ ipcMain.handle("app:checkSetup", async () => {
 });
 
 ipcMain.handle("pipeline:cancel", () => {
+  killAllPipelineChildren();
   abortController?.abort();
   return true;
 });

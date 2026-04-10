@@ -1,8 +1,12 @@
 appId: com.youtubedj.pipeline
 productName: YouTube DJ Pipeline
+icon: build/icon.png
 # Signing / notarization (macOS + Windows Authenticode): https://www.electron.build/code-signing
+# CPU arch is chosen per build via CLI (--arm64 / --x64 / --win --arm64), not both at once,
+# so vendor/ffmpeg matches the packaged binary (see scripts/fetch-native-tools.mjs + VENDOR_ARCH).
 directories:
   output: dist
+  buildResources: build
 files:
   - src/**/*
   - electron/**/*
@@ -17,12 +21,8 @@ mac:
     - zip
 win:
   target:
-    - target: nsis
-      arch:
-        - x64
-    - target: zip
-      arch:
-        - x64
+    - nsis
+    - zip
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true

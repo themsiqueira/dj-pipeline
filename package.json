@@ -8,14 +8,18 @@
     "fetch-tools": "node scripts/fetch-native-tools.mjs",
     "electron:dev": "electron .",
     "electron:build": "npm run fetch-tools && electron-builder --publish never",
-    "electron:build:mac": "npm run fetch-tools && electron-builder --mac --publish never",
-    "electron:build:win": "npm run fetch-tools && electron-builder --win --x64 --publish never"
+    "electron:build:mac": "npm run fetch-tools && electron-builder --mac --arm64 --publish never",
+    "electron:build:mac:arm64": "npm run fetch-tools && electron-builder --mac --arm64 --publish never",
+    "electron:build:mac:x64": "cross-env VENDOR_ARCH=x64 npm run fetch-tools && electron-builder --mac --x64 --publish never",
+    "electron:build:win": "npm run fetch-tools && electron-builder --win --x64 --publish never",
+    "electron:build:win:arm64": "cross-env VENDOR_ARCH=arm64 npm run fetch-tools && electron-builder --win --arm64 --publish never"
   },
   "dependencies": {
     "node-id3": "^0.2.6",
     "xmlbuilder2": "^3.1.1"
   },
   "devDependencies": {
+    "cross-env": "^7.0.3",
     "electron": "^34.3.0",
     "electron-builder": "^25.1.8",
     "ffmpeg-static": "^5.2.0"

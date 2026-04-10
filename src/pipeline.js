@@ -8,6 +8,7 @@ import { buildITunesLibraryXml, toFileUrl } from "./rekordboxXml.js";
 import { writeFailureReportCsv, writeLastRunErrorArtifact } from "./csvReport.js";
 import { assertYtdlpAndFfmpegAvailable } from "./toolCheck.js";
 import { toPipelineError } from "./pipelineErrors.js";
+import { killAllPipelineChildren } from "./pipelineChildren.js";
 
 export function normalizePlaylistUrl(raw) {
   return String(raw)
@@ -29,6 +30,36 @@ export function assertValidYouTubePlaylistUrl(playlistUrl) {
 
 function isCancelledError(err, signal) {
   return signal.aborted || err?.message === "Cancelled";
+}
+
+/**
+ * Flat playlist entries usually include title + uploader; full JSON adds upload_date, artist, etc.
+ * @param {object} entry
+ */
+function flatEntryHasSufficientMetadata(entry) {
+  const title = String(entry?.title ?? "").trim();
+  const who = String(entry?.uploader ?? entry?.channel ?? entry?.channel_id ?? "").trim();
+  return title.length > 0 && who.length > 0;
+}
+
+/**
+ * @param {object} entry
+ * @param {string} videoUrl
+ */
+function videoMetaFromFlatEntry(entry, videoUrl) {
+  const uploader = entry.uploader || entry.channel || entry.channel_id || "Unknown";
+  const artist = entry.artist || entry.creator || uploader;
+  const uploadDate = entry.upload_date;
+  const webpage =
+    typeof entry.url === "string" && /^https?:\/\//i.test(entry.url) ? entry.url : videoUrl;
+  return {
+    title: entry.title,
+    uploader,
+    artist,
+    upload_date: uploadDate,
+    release_year: entry.release_year,
+    webpage_url: webpage
+  };
 }
 
 /**
@@ -58,13 +89,14 @@ export async function runPlaylist({ playlistUrl, outputRoot, signal, onLog, onPr
   ensureDir(THUMBNAILS_DIR);
 
   const runCore = async () => {
+    killAllPipelineChildren();
     assertYtdlpAndFfmpegAvailable();
 
     if (signal.aborted) {
       throw new Error("Cancelled");
     }
 
-    const playlist = ytDlpJson(playlistUrl);
+    const playlist = await ytDlpJson(playlistUrl, [], signal);
     const playlistTitle = playlist.title || "YouTube Playlist";
 
     log(`Playlist: ${playlistTitle}`);
@@ -75,6 +107,8 @@ export async function runPlaylist({ playlistUrl, outputRoot, signal, onLog, onPr
     let trackId = 1;
     const entries = playlist.entries ?? [];
     const total = entries.length;
+    const saveRawMeta = process.env.YOUTUBE_DJ_SAVE_RAW_META === "1";
+    const usedAudioBasenames = new Set();
 
     for (let i = 0; i < total; i++) {
       if (signal.aborted) {
@@ -97,8 +131,13 @@ export async function runPlaylist({ playlistUrl, outputRoot, signal, onLog, onPr
           throw new Error("Cancelled");
         }
 
-        const v = ytDlpVideoJson(videoUrl);
-        rowTitle = v.title || rowTitle;
+        let v;
+        if (flatEntryHasSufficientMetadata(entry)) {
+          v = videoMetaFromFlatEntry(entry, videoUrl);
+        } else {
+          v = await ytDlpVideoJson(videoUrl, [], signal);
+          rowTitle = v.title || rowTitle;
+        }
 
         const meta = {
           title: v.title,
@@ -106,21 +145,24 @@ export async function runPlaylist({ playlistUrl, outputRoot, signal, onLog, onPr
           artist: v.artist || v.uploader,
           playlist_title: playlistTitle,
           trackNumber: i + 1,
-          year: v.release_year || (v.upload_date ? v.upload_date.slice(0, 4) : undefined),
+          year: v.release_year || (v.upload_date ? String(v.upload_date).slice(0, 4) : undefined),
           webpage_url: v.webpage_url
         };
 
-        const rawMetaPath = join(LOGS_DIR, `${videoId}.json`);
-        writeJson(rawMetaPath, v);
+        if (saveRawMeta) {
+          const rawMetaPath = join(LOGS_DIR, `${videoId}.json`);
+          writeJson(rawMetaPath, v);
+        }
 
         const thumbnailPath = join(THUMBNAILS_DIR, `${videoId}.jpg`);
         let coverArtPath = null;
         try {
-          const downloaded = downloadThumbnail(videoUrl, thumbnailPath);
+          const downloaded = await downloadThumbnail(videoUrl, thumbnailPath, signal);
           if (downloaded && fs.existsSync(downloaded)) {
             coverArtPath = downloaded;
           }
         } catch (error) {
+          if (error?.message === "Cancelled") throw error;
           log(`  Warning: Could not download thumbnail: ${error.message}`);
         }
 
@@ -128,12 +170,16 @@ export async function runPlaylist({ playlistUrl, outputRoot, signal, onLog, onPr
           throw new Error("Cancelled");
         }
 
-        const tmpFile = downloadBestAudio(videoUrl, TMP);
-        const outName = makeOutputName({ index: i + 1, title: meta.title });
+        const tmpFile = await downloadBestAudio(videoUrl, TMP, signal);
+        const outName = makeOutputName({
+          title: meta.title,
+          videoId,
+          usedBasenames: usedAudioBasenames
+        });
         const outMp3 = join(AUDIO_DIR, outName);
 
         const loudnormLog = join(LOGS_DIR, `${videoId}.loudnorm.json`);
-        loudnormTwoPassToMp3(tmpFile, outMp3, loudnormLog, { i: -9, tp: -1.0, lra: 8 });
+        await loudnormTwoPassToMp3(tmpFile, outMp3, loudnormLog, { i: -9, tp: -1.0, lra: 8 }, signal);
 
         writeId3(outMp3, meta, coverArtPath);
 

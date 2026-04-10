@@ -31,7 +31,7 @@ By default the CLI writes under `./output`. The Electron app uses a folder you c
 ```
 output/
 ├── audio/
-│   └── 01 - Track Name.mp3
+│   └── Track Name.mp3
 ├── logs/
 │   ├── VIDEO_ID.json
 │   └── VIDEO_ID.loudnorm.json

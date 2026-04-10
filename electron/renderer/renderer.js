@@ -24,14 +24,26 @@ const ERROR_CODE = {
   UNKNOWN: "UNKNOWN"
 };
 
+const MAX_LOG_LINES = 2000;
+
 let lastOutputRoot = null;
 let unsubLog = null;
 let unsubProgress = null;
 let setupReady = false;
 let pipelineRunning = false;
 
+function clearLog() {
+  logEl.replaceChildren();
+}
+
 function appendLog(line) {
-  logEl.textContent += (logEl.textContent ? "\n" : "") + line;
+  const row = document.createElement("div");
+  row.className = "log-line";
+  row.textContent = line;
+  logEl.appendChild(row);
+  while (logEl.children.length > MAX_LOG_LINES) {
+    logEl.removeChild(logEl.firstChild);
+  }
   logEl.scrollTop = logEl.scrollHeight;
 }
 
@@ -66,19 +78,18 @@ function showFailuresUi(failures, csvPath) {
   for (const f of failures) {
     const li = document.createElement("li");
     const title = (f.title || "").trim() || "(unknown title)";
-    li.innerHTML = `<strong>${escapeHtml(title)}</strong><br /><span class="fail-url">${escapeHtml(
-      f.url || ""
-    )}</span><br />${escapeHtml(f.reason || "")}`;
+    const strong = document.createElement("strong");
+    strong.textContent = title;
+    li.appendChild(strong);
+    li.appendChild(document.createElement("br"));
+    const urlSpan = document.createElement("span");
+    urlSpan.className = "fail-url";
+    urlSpan.textContent = f.url || "";
+    li.appendChild(urlSpan);
+    li.appendChild(document.createElement("br"));
+    li.appendChild(document.createTextNode(f.reason || ""));
     failuresList.appendChild(li);
   }
-}
-
-function escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 function formatSetupIssues(status) {
@@ -187,7 +198,7 @@ startBtn.addEventListener("click", async () => {
     return;
   }
 
-  logEl.textContent = "";
+  clearLog();
   progressEl.textContent = "";
   clearFailuresUi();
   openBtn.disabled = true;
@@ -234,5 +245,10 @@ startBtn.addEventListener("click", async () => {
 
 (async () => {
   await initDefaults();
-  await refreshSetup();
+  // Defer setup IPC until after first paint so the window does not feel frozen on launch.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      refreshSetup();
+    });
+  });
 })();

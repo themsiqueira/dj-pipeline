@@ -11,7 +11,8 @@
     "electron:build:mac": "npm run fetch-tools && electron-builder --mac --arm64 --publish never",
     "electron:build:mac:arm64": "npm run fetch-tools && electron-builder --mac --arm64 --publish never",
     "electron:build:mac:x64": "cross-env VENDOR_ARCH=x64 npm run fetch-tools && electron-builder --mac --x64 --publish never",
-    "electron:build:win": "cross-env VENDOR_PLATFORM=win32 VENDOR_ARCH=x64 npm run fetch-tools && electron-builder --win --x64 --publish never",
+    "electron:build:win": "npm run electron:build:win:x64",
+    "electron:build:win:x64": "cross-env VENDOR_PLATFORM=win32 VENDOR_ARCH=x64 npm run fetch-tools && electron-builder --win --x64 --publish never",
     "electron:build:win:arm64": "cross-env VENDOR_PLATFORM=win32 VENDOR_ARCH=arm64 npm run fetch-tools && electron-builder --win --arm64 --publish never"
   },
   "dependencies": {

@@ -2,7 +2,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
-import { runPlaylist, normalizePlaylistUrl, assertValidYouTubePlaylistUrl } from "../src/pipeline.js";
+import { runPlaylist, normalizePlaylistUrl, assertValidPipelineUrl } from "../src/pipeline.js";
 import { getToolSetupStatus } from "../src/toolCheck.js";
 import { toPipelineError, PIPELINE_ERROR } from "../src/pipelineErrors.js";
 import { killAllPipelineChildren } from "../src/pipelineChildren.js";
@@ -161,7 +161,7 @@ ipcMain.handle("pipeline:start", async (event, { playlistUrl, outputRoot }) => {
 
   try {
     const normalized = normalizePlaylistUrl(playlistUrl);
-    assertValidYouTubePlaylistUrl(normalized);
+    assertValidPipelineUrl(normalized);
     const summary = await runPlaylist({
       playlistUrl: normalized,
       outputRoot: root,

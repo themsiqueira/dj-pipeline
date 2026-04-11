@@ -3,6 +3,7 @@ import path from "path";
 import { ensureDir, join } from "./util.js";
 import { getYtDlpExecutable } from "./binaries.js";
 import { spawnTracked } from "./spawnUtil.js";
+import { classifyPipelineUrl, isYouTubeUrl } from "./urlPolicy.js";
 
 /** Default YouTube player clients; retry downloads may use {@link YOUTUBE_YTDLP_RETRY_PLAYER_CLIENT}. */
 const DEFAULT_YOUTUBE_PLAYER_CLIENT = "web_embedded,default";
@@ -24,16 +25,60 @@ export function youtubeYtDlpArgs(playerClientSpec = DEFAULT_YOUTUBE_PLAYER_CLIEN
 export const YOUTUBE_YTDLP_RETRY_PLAYER_CLIENT = "android,web";
 
 /**
+ * Single video/track flat JSON is the media dict itself; playlists return `{ entries: [...] }`.
+ * @param {object} data
+ * @param {string} playlistUrl
+ */
+function normalizeFlatPlaylistPayload(data, playlistUrl) {
+  if (data == null || typeof data !== "object") {
+    throw new Error(`Failed to fetch playlist: invalid response\nURL: ${playlistUrl}`);
+  }
+  if (Array.isArray(data.entries) && data.entries.length > 0) {
+    return data;
+  }
+  // Empty playlist/set: top-level `id` is often the playlist id — do not treat as one track.
+  if (data._type === "playlist") {
+    return { ...data, entries: Array.isArray(data.entries) ? data.entries : [] };
+  }
+  const url = typeof data.url === "string" ? data.url.trim() : "";
+  const webpage = typeof data.webpage_url === "string" ? data.webpage_url.trim() : "";
+  const id = data.id != null && String(data.id).trim() !== "" ? String(data.id).trim() : "";
+  if (id || url || webpage) {
+    return {
+      ...data,
+      entries: [
+        {
+          id: data.id,
+          title: data.title,
+          url: url || webpage || playlistUrl,
+          webpage_url: webpage || url || playlistUrl,
+          uploader: data.uploader,
+          channel: data.channel,
+          channel_id: data.channel_id,
+          artist: data.artist,
+          upload_date: data.upload_date,
+          release_year: data.release_year
+        }
+      ]
+    };
+  }
+  return { ...data, entries: [] };
+}
+
+/**
  * @param {string} playlistUrl
  * @param {string[]} [extraArgs]
  * @param {AbortSignal} [signal]
  */
 export async function ytDlpJson(playlistUrl, extraArgs = [], signal) {
+  const { site, mode } = classifyPipelineUrl(playlistUrl);
+  const playlistScope = mode === "single" ? ["--no-playlist"] : ["--yes-playlist"];
+  const youtubeArgs = site === "youtube" ? youtubeYtDlpArgs() : [];
   const args = [
     "--dump-single-json",
-    "--yes-playlist",
+    ...playlistScope,
     "--flat-playlist",
-    ...youtubeYtDlpArgs(),
+    ...youtubeArgs,
     ...extraArgs,
     playlistUrl
   ];
@@ -41,7 +86,11 @@ export async function ytDlpJson(playlistUrl, extraArgs = [], signal) {
   const yt = getYtDlpExecutable();
   try {
     const { stdout } = await spawnTracked(yt, args, { signal });
-    return JSON.parse(stdout);
+    const data = JSON.parse(stdout);
+    if (data === null) {
+      throw new Error(`Failed to fetch playlist: empty response\nURL: ${playlistUrl}`);
+    }
+    return normalizeFlatPlaylistPayload(data, playlistUrl);
   } catch (error) {
     const errorMsg = error.stderr?.toString() || error.message || "Unknown error";
     throw new Error(`Failed to fetch playlist: ${errorMsg}\nURL: ${playlistUrl}`);
@@ -54,7 +103,10 @@ export async function ytDlpJson(playlistUrl, extraArgs = [], signal) {
  * @param {AbortSignal} [signal]
  */
 export async function ytDlpVideoJson(videoUrl, extraArgs = [], signal) {
-  const args = ["--dump-single-json", ...youtubeYtDlpArgs(), ...extraArgs, videoUrl];
+  const { site, mode } = classifyPipelineUrl(videoUrl);
+  const playlistScope = mode === "single" ? ["--no-playlist"] : [];
+  const youtubeArgs = site === "youtube" ? youtubeYtDlpArgs() : [];
+  const args = ["--dump-single-json", ...playlistScope, ...youtubeArgs, ...extraArgs, videoUrl];
   const yt = getYtDlpExecutable();
   try {
     const { stdout } = await spawnTracked(yt, args, { signal });
@@ -75,6 +127,10 @@ export function buildVideoUrl(id) {
  * @param {AbortSignal} [signal]
  */
 export async function downloadThumbnail(videoUrl, outputPath, signal) {
+  if (!isYouTubeUrl(videoUrl)) {
+    return null;
+  }
+
   ensureDir(path.dirname(outputPath));
 
   const args = [

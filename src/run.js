@@ -1,24 +1,20 @@
 import path from "path";
-import {
-  runPlaylist,
-  normalizePlaylistUrl,
-  assertValidYouTubePlaylistUrl
-} from "./pipeline.js";
+import { runPlaylist, normalizePlaylistUrl, assertValidPipelineUrl } from "./pipeline.js";
 import { toPipelineError, PIPELINE_ERROR } from "./pipelineErrors.js";
 
 let playlistUrl = process.argv[2];
 if (!playlistUrl) {
-  console.error("Usage: npm run run -- <youtube_playlist_url>");
+  console.error("Usage: npm run run -- <youtube_or_soundcloud_playlist_or_track_url>");
   process.exit(1);
 }
 
 playlistUrl = normalizePlaylistUrl(playlistUrl);
 
 try {
-  assertValidYouTubePlaylistUrl(playlistUrl);
+  assertValidPipelineUrl(playlistUrl);
 } catch (error) {
   console.error(`Error: ${error.message}`);
-  console.error("Please provide a valid YouTube playlist URL");
+  console.error("Please provide a valid YouTube or SoundCloud URL (playlist, set, or single track).");
   process.exit(1);
 }
 

@@ -23,6 +23,7 @@ export function toPipelineError(err) {
 
   if (
     message.startsWith("Invalid URL format:") ||
+    message.startsWith("Invalid pipeline URL:") ||
     message === "Invalid YouTube URL" ||
     message.includes("Invalid YouTube URL")
   ) {

@@ -1,9 +1,11 @@
 import fs from "fs";
 import path from "path";
+import { randomUUID } from "crypto";
 import { ensureDir, sanitizeFilename, writeJson, join, fileExists } from "./util.js";
 import { youtubeYtDlpArgs, YOUTUBE_YTDLP_RETRY_PLAYER_CLIENT } from "./yt.js";
 import { getYtDlpExecutable, getFfmpegExecutable } from "./binaries.js";
 import { spawnTracked, spawnTrackedInherit } from "./spawnUtil.js";
+import { isYouTubeUrl } from "./urlPolicy.js";
 
 function stderrLooksLike403Forbidden(err) {
   const chunks = [err.stderr, err.stdout, err.message].filter(Boolean);
@@ -12,23 +14,25 @@ function stderrLooksLike403Forbidden(err) {
 }
 
 /**
- * @param {string} videoUrl
+ * @param {string} mediaUrl
  * @param {string} tmpDir
  * @param {AbortSignal} [signal]
  */
-export async function downloadBestAudio(videoUrl, tmpDir, signal) {
+export async function downloadBestAudio(mediaUrl, tmpDir, signal) {
   ensureDir(tmpDir);
 
-  const outTemplate = join(tmpDir, "%(id)s.%(ext)s");
+  const token = randomUUID();
+  const outTemplate = join(tmpDir, `${token}-%(id)s.%(ext)s`);
+  const youtubeArgs = isYouTubeUrl(mediaUrl) ? youtubeYtDlpArgs() : [];
   const tailArgs = [
     "--no-warnings",
     "--no-progress",
-    ...youtubeYtDlpArgs(),
+    ...youtubeArgs,
     "-f",
     "bestaudio/best",
     "-o",
     outTemplate,
-    videoUrl
+    mediaUrl
   ];
 
   const yt = getYtDlpExecutable();
@@ -36,7 +40,7 @@ export async function downloadBestAudio(videoUrl, tmpDir, signal) {
     await spawnTracked(yt, tailArgs, { signal });
   } catch (err) {
     if (err?.message === "Cancelled") throw err;
-    if (!stderrLooksLike403Forbidden(err)) throw err;
+    if (!isYouTubeUrl(mediaUrl) || !stderrLooksLike403Forbidden(err)) throw err;
     await spawnTracked(
       yt,
       [
@@ -47,15 +51,19 @@ export async function downloadBestAudio(videoUrl, tmpDir, signal) {
         "bestaudio/best",
         "-o",
         outTemplate,
-        videoUrl
+        mediaUrl
       ],
       { signal }
     );
   }
 
-  const id = new URL(videoUrl).searchParams.get("v") ?? "";
-  const files = fs.readdirSync(tmpDir).filter((f) => f.startsWith(`${id}.`));
-  if (!files.length) throw new Error(`Download failed for ${videoUrl}`);
+  const files = fs
+    .readdirSync(tmpDir)
+    .filter((f) => f.startsWith(`${token}-`))
+    .map((f) => ({ f, m: fs.statSync(join(tmpDir, f)).mtimeMs }))
+    .sort((a, b) => b.m - a.m)
+    .map((x) => x.f);
+  if (!files.length) throw new Error(`Download failed for ${mediaUrl}`);
   return join(tmpDir, files[0]);
 }
 
@@ -126,15 +134,15 @@ export async function loudnormTwoPassToMp3(inputPath, outputPath, logPath, targe
 
 /**
  * Filename is the track title only (no playlist index). Duplicate titles in one run
- * become `Title - {videoId}.mp3`.
- * @param {{ title?: string, videoId: string, usedBasenames: Set<string> }} opts
+ * become `Title - {stableId}.mp3`.
+ * @param {{ title?: string, stableId: string, usedBasenames: Set<string> }} opts
  */
-export function makeOutputName({ title, videoId, usedBasenames }) {
+export function makeOutputName({ title, stableId, usedBasenames }) {
   const safeTitle = sanitizeFilename(title || "Unknown Title");
   let name = `${safeTitle}.mp3`;
   if (usedBasenames.has(name)) {
-    const vid = sanitizeFilename(videoId || "unknown");
-    name = `${safeTitle} - ${vid}.mp3`;
+    const idPart = sanitizeFilename(stableId || "unknown");
+    name = `${safeTitle} - ${idPart}.mp3`;
   }
   usedBasenames.add(name);
   return name;

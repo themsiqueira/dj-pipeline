@@ -12,7 +12,10 @@
     <div class="app-shell">
       <header class="app-header">
         <h1 class="app-title">YouTube DJ Pipeline</h1>
-        <p class="app-subtitle">Download a playlist to MP3, normalize loudness, tag, and export Rekordbox XML.</p>
+        <p class="app-subtitle">
+          Download a YouTube or SoundCloud playlist or single track to MP3, normalize loudness, tag, and export
+          Rekordbox XML.
+        </p>
       </header>
 
       <section id="setupBanner" class="setup-banner hidden" role="alert" aria-live="polite">
@@ -24,11 +27,16 @@
 
       <section class="card" aria-labelledby="export-heading">
         <h2 id="export-heading" class="card-title">Export</h2>
-        <p class="card-lead">Paste a playlist URL and choose where to save audio and reports.</p>
+        <p class="card-lead">Paste a playlist, set, or single-track URL and choose where to save audio and reports.</p>
 
         <label class="field">
-          <span class="field-label">Playlist URL</span>
-          <input type="url" id="playlistUrl" placeholder="https://www.youtube.com/playlist?list=…" autocomplete="url" />
+          <span class="field-label">Playlist or track URL</span>
+          <input
+            type="url"
+            id="playlistUrl"
+            placeholder="YouTube playlist, watch link, or SoundCloud set / track…"
+            autocomplete="url"
+          />
         </label>
         <label class="field">
           <span class="field-label">Output folder</span>

@@ -135,7 +135,7 @@ function logPipelineFailure(result) {
     return;
   }
   if (result.code === ERROR_CODE.INVALID_URL) {
-    appendLog(result.error || "Invalid playlist URL.");
+    appendLog(result.error || "Invalid URL (use YouTube or SoundCloud).");
     return;
   }
   if (result.code === ERROR_CODE.PLAYLIST_FETCH) {
@@ -190,7 +190,7 @@ startBtn.addEventListener("click", async () => {
   const playlistUrl = playlistInput.value.trim();
   const outputRoot = outputInput.value.trim();
   if (!playlistUrl) {
-    appendLog("Enter a playlist URL.");
+    appendLog("Enter a playlist or track URL.");
     return;
   }
   if (!outputRoot) {

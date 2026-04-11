@@ -1,5 +1,6 @@
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { ensureDir, writeJson, join } from "./util.js";
 import { ytDlpJson, ytDlpVideoJson, buildVideoUrl, downloadThumbnail } from "./yt.js";
 import { downloadBestAudio, loudnormTwoPassToMp3, makeOutputName } from "./audio.js";
@@ -9,6 +10,9 @@ import { writeFailureReportCsv, writeLastRunErrorArtifact } from "./csvReport.js
 import { assertYtdlpAndFfmpegAvailable } from "./toolCheck.js";
 import { toPipelineError } from "./pipelineErrors.js";
 import { killAllPipelineChildren } from "./pipelineChildren.js";
+import { classifyPipelineUrl } from "./urlPolicy.js";
+
+export { assertValidPipelineUrl } from "./urlPolicy.js";
 
 export function normalizePlaylistUrl(raw) {
   return String(raw)
@@ -17,19 +21,52 @@ export function normalizePlaylistUrl(raw) {
     .trim();
 }
 
-export function assertValidYouTubePlaylistUrl(playlistUrl) {
-  try {
-    const url = new URL(playlistUrl);
-    if (!url.hostname.includes("youtube.com") && !url.hostname.includes("youtu.be")) {
-      throw new Error("Invalid YouTube URL");
-    }
-  } catch {
-    throw new Error(`Invalid URL format: ${playlistUrl}`);
-  }
-}
-
 function isCancelledError(err, signal) {
   return signal.aborted || err?.message === "Cancelled";
+}
+
+function pickHttpsUrl(v) {
+  if (typeof v !== "string") return "";
+  const s = v.trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  if (/^\/\//.test(s)) return `https:${s}`;
+  return "";
+}
+
+/**
+ * @param {object} entry
+ * @param {import("./urlPolicy.js").PipelineSite} site
+ * @returns {string}
+ */
+function resolveTrackDownloadUrl(entry, site) {
+  const candidates = [entry?.url, entry?.webpage_url, entry?.original_url];
+  for (const c of candidates) {
+    const abs = pickHttpsUrl(c);
+    if (abs) return abs;
+    if (typeof c === "string" && site === "soundcloud") {
+      const t = c.trim();
+      if (t.startsWith("/") && t.length > 1 && !t.startsWith("//")) {
+        return `https://soundcloud.com${t}`;
+      }
+    }
+  }
+  const id = entry?.id != null && String(entry.id).trim() !== "" ? String(entry.id).trim() : "";
+  if (site === "youtube" && id) {
+    return buildVideoUrl(id);
+  }
+  return "";
+}
+
+/**
+ * @param {object} entry
+ * @param {string} trackUrl
+ */
+function artifactStem(entry, trackUrl) {
+  const id = entry?.id != null ? String(entry.id).trim() : "";
+  if (id && /^[a-zA-Z0-9._-]{1,80}$/.test(id)) {
+    return id.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
+  }
+  return crypto.createHash("sha256").update(trackUrl).digest("hex").slice(0, 16);
 }
 
 /**
@@ -38,20 +75,21 @@ function isCancelledError(err, signal) {
  */
 function flatEntryHasSufficientMetadata(entry) {
   const title = String(entry?.title ?? "").trim();
-  const who = String(entry?.uploader ?? entry?.channel ?? entry?.channel_id ?? "").trim();
+  const who = String(
+    entry?.uploader ?? entry?.channel ?? entry?.channel_id ?? entry?.artist ?? ""
+  ).trim();
   return title.length > 0 && who.length > 0;
 }
 
 /**
  * @param {object} entry
- * @param {string} videoUrl
+ * @param {string} trackUrl
  */
-function videoMetaFromFlatEntry(entry, videoUrl) {
+function videoMetaFromFlatEntry(entry, trackUrl) {
   const uploader = entry.uploader || entry.channel || entry.channel_id || "Unknown";
   const artist = entry.artist || entry.creator || uploader;
   const uploadDate = entry.upload_date;
-  const webpage =
-    typeof entry.url === "string" && /^https?:\/\//i.test(entry.url) ? entry.url : videoUrl;
+  const webpage = pickHttpsUrl(entry.url) || pickHttpsUrl(entry.webpage_url) || trackUrl;
   return {
     title: entry.title,
     uploader,
@@ -96,8 +134,9 @@ export async function runPlaylist({ playlistUrl, outputRoot, signal, onLog, onPr
       throw new Error("Cancelled");
     }
 
+    const { site } = classifyPipelineUrl(playlistUrl);
     const playlist = await ytDlpJson(playlistUrl, [], signal);
-    const playlistTitle = playlist.title || "YouTube Playlist";
+    const playlistTitle = playlist.title || "Import";
 
     log(`Playlist: ${playlistTitle}`);
     log(`Items: ${playlist.entries?.length ?? 0}`);
@@ -116,9 +155,10 @@ export async function runPlaylist({ playlistUrl, outputRoot, signal, onLog, onPr
       }
 
       const entry = entries[i];
-      const videoId = entry?.id != null && String(entry.id).trim() !== "" ? String(entry.id).trim() : "";
-      if (!videoId) {
-        const reason = "Playlist entry has no video id (private/deleted or unsupported entry type).";
+      const trackUrl = resolveTrackDownloadUrl(entry, site);
+      if (!trackUrl) {
+        const reason =
+          "Playlist entry has no usable track URL (private/deleted or unsupported entry type).";
         const entryUrl =
           typeof entry?.url === "string" && /^https?:\/\//i.test(entry.url) ? entry.url : "";
         failures.push({
@@ -128,7 +168,7 @@ export async function runPlaylist({ playlistUrl, outputRoot, signal, onLog, onPr
           reason
         });
         log("");
-        log(`[${i + 1}/${total}] ${entry?.title || "(no id)"}`);
+        log(`[${i + 1}/${total}] ${entry?.title || "(no URL)"}`);
         log(`  Skipped: ${reason}`);
         if (typeof onProgress === "function") {
           onProgress({ current: i + 1, total, title: String(entry?.title || "").trim() });
@@ -137,11 +177,11 @@ export async function runPlaylist({ playlistUrl, outputRoot, signal, onLog, onPr
         continue;
       }
 
-      const videoUrl = buildVideoUrl(videoId);
+      const stem = artifactStem(entry, trackUrl);
       let rowTitle = entry.title || "";
 
       log("");
-      log(`[${i + 1}/${total}] ${rowTitle || videoUrl}`);
+      log(`[${i + 1}/${total}] ${rowTitle || trackUrl}`);
       if (typeof onProgress === "function") {
         onProgress({ current: i + 1, total, title: rowTitle });
       }
@@ -153,9 +193,9 @@ export async function runPlaylist({ playlistUrl, outputRoot, signal, onLog, onPr
 
         let v;
         if (flatEntryHasSufficientMetadata(entry)) {
-          v = videoMetaFromFlatEntry(entry, videoUrl);
+          v = videoMetaFromFlatEntry(entry, trackUrl);
         } else {
-          v = await ytDlpVideoJson(videoUrl, [], signal);
+          v = await ytDlpVideoJson(trackUrl, [], signal);
           rowTitle = v.title || rowTitle;
         }
 
@@ -170,14 +210,14 @@ export async function runPlaylist({ playlistUrl, outputRoot, signal, onLog, onPr
         };
 
         if (saveRawMeta) {
-          const rawMetaPath = join(LOGS_DIR, `${videoId}.json`);
+          const rawMetaPath = join(LOGS_DIR, `${stem}.json`);
           writeJson(rawMetaPath, v);
         }
 
-        const thumbnailPath = join(THUMBNAILS_DIR, `${videoId}.jpg`);
+        const thumbnailPath = join(THUMBNAILS_DIR, `${stem}.jpg`);
         let coverArtPath = null;
         try {
-          const downloaded = await downloadThumbnail(videoUrl, thumbnailPath, signal);
+          const downloaded = await downloadThumbnail(trackUrl, thumbnailPath, signal);
           if (downloaded && fs.existsSync(downloaded)) {
             coverArtPath = downloaded;
           }
@@ -190,15 +230,15 @@ export async function runPlaylist({ playlistUrl, outputRoot, signal, onLog, onPr
           throw new Error("Cancelled");
         }
 
-        const tmpFile = await downloadBestAudio(videoUrl, TMP, signal);
+        const tmpFile = await downloadBestAudio(trackUrl, TMP, signal);
         const outName = makeOutputName({
           title: meta.title,
-          videoId,
+          stableId: stem,
           usedBasenames: usedAudioBasenames
         });
         const outMp3 = join(AUDIO_DIR, outName);
 
-        const loudnormLog = join(LOGS_DIR, `${videoId}.loudnorm.json`);
+        const loudnormLog = join(LOGS_DIR, `${stem}.loudnorm.json`);
         await loudnormTwoPassToMp3(tmpFile, outMp3, loudnormLog, { i: -9, tp: -1.0, lra: 8 }, signal);
 
         writeId3(outMp3, meta, coverArtPath);
@@ -225,7 +265,7 @@ export async function runPlaylist({ playlistUrl, outputRoot, signal, onLog, onPr
           throw err;
         }
         const reason = (err?.message || String(err)).trim() || "Unknown error";
-        failures.push({ index: i + 1, url: videoUrl, title: rowTitle, reason });
+        failures.push({ index: i + 1, url: trackUrl, title: rowTitle, reason });
         log(`  Failed: ${reason}`);
       }
 

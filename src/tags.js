@@ -1,5 +1,19 @@
 import fs from "fs";
 import NodeID3 from "node-id3";
+import { AUDIO_FORMAT, normalizeAudioFormat } from "./audioFormats.js";
+
+/**
+ * MP3 is tagged here with ID3; FLAC already carries Vorbis comments and the cover
+ * picture written by ffmpeg during the encode pass.
+ * @param {string} filePath
+ * @param {object} meta
+ * @param {string | null} coverJpgPath
+ * @param {string} format
+ */
+export function writeAudioTags(filePath, meta, coverJpgPath = null, format = AUDIO_FORMAT.MP3) {
+  if (normalizeAudioFormat(format) === AUDIO_FORMAT.FLAC) return;
+  writeId3(filePath, meta, coverJpgPath);
+}
 
 export function writeId3(mp3Path, meta, coverJpgPath = null) {
   const tags = {

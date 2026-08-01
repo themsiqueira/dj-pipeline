@@ -1,8 +1,15 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
+// Mirrored from src/pipelineErrors.js at load time; the renderer cannot import from src/.
+const errorCodes = ipcRenderer.sendSync("app:getErrorCodes");
+
 contextBridge.exposeInMainWorld("ytDj", {
+  errorCodes,
   pickOutputDir: () => ipcRenderer.invoke("dialog:pickOutputDir"),
+  pickLocalSource: (kind) => ipcRenderer.invoke("dialog:pickLocalSource", kind),
   getDefaultOutputDir: () => ipcRenderer.invoke("app:getDefaultOutputDir"),
+  getAiSettings: () => ipcRenderer.invoke("config:getAiSettings"),
+  setAiSettings: (settings) => ipcRenderer.invoke("config:setAiSettings", settings),
   checkSetup: () => ipcRenderer.invoke("app:checkSetup"),
   start: (opts) => ipcRenderer.invoke("pipeline:start", opts),
   cancel: () => ipcRenderer.invoke("pipeline:cancel"),

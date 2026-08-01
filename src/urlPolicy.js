@@ -1,7 +1,11 @@
+import { pipelineError, PIPELINE_ERROR } from "./pipelineErrors.js";
+
 /**
- * @typedef {"youtube" | "soundcloud" | "unknown"} PipelineSite
+ * @typedef {"youtube" | "soundcloud" | "spotify" | "unknown"} PipelineSite
  * @typedef {"playlist" | "single"} PipelineMode
  */
+
+const SPOTIFY_URI_RE = /^spotify:(playlist|album|track):[A-Za-z0-9]{10,}$/i;
 
 /**
  * @param {string} hostname
@@ -14,6 +18,9 @@ export function siteFromHostname(hostname) {
   }
   if (h.endsWith("soundcloud.com")) {
     return "soundcloud";
+  }
+  if (h === "open.spotify.com" || h === "play.spotify.com") {
+    return "spotify";
   }
   return "unknown";
 }
@@ -31,13 +38,37 @@ export function isYouTubeUrl(urlString) {
 }
 
 /**
+ * @param {string} urlString
+ * @returns {boolean}
+ */
+export function isSpotifyPipelineUrl(urlString) {
+  if (typeof urlString !== "string") return false;
+  const s = urlString.trim();
+  if (SPOTIFY_URI_RE.test(s)) return true;
+  try {
+    return siteFromHostname(new URL(s).hostname) === "spotify";
+  } catch {
+    return false;
+  }
+}
+
+/**
  * @param {string} rawUrl
  * @returns {{ site: PipelineSite, mode: PipelineMode }}
  */
 export function classifyPipelineUrl(rawUrl) {
+  const raw = typeof rawUrl === "string" ? rawUrl.trim() : "";
+
+  // spotify: URI form (not a valid URL() input).
+  if (SPOTIFY_URI_RE.test(raw)) {
+    const kind = raw.split(":")[1].toLowerCase();
+    const mode = kind === "track" ? "single" : "playlist";
+    return { site: "spotify", mode };
+  }
+
   let url;
   try {
-    url = new URL(rawUrl);
+    url = new URL(raw);
   } catch {
     return { site: "unknown", mode: "single" };
   }
@@ -67,6 +98,18 @@ export function classifyPipelineUrl(rawUrl) {
     return { site, mode: "single" };
   }
 
+  if (site === "spotify") {
+    // Strip /intl-xx prefix when classifying.
+    const segments = url.pathname.split("/").filter(Boolean);
+    if (segments.length > 0 && /^intl(-[a-z]{2})?$/i.test(segments[0])) {
+      segments.shift();
+    }
+    const kind = (segments[0] || "").toLowerCase();
+    if (kind === "track") return { site, mode: "single" };
+    if (kind === "playlist" || kind === "album") return { site, mode: "playlist" };
+    return { site, mode: "single" };
+  }
+
   return { site, mode: "single" };
 }
 
@@ -74,17 +117,20 @@ export function classifyPipelineUrl(rawUrl) {
  * @param {string} playlistUrl
  */
 export function assertValidPipelineUrl(playlistUrl) {
+  const raw = typeof playlistUrl === "string" ? playlistUrl.trim() : "";
+  if (SPOTIFY_URI_RE.test(raw)) return;
+
+  let url;
   try {
-    const url = new URL(playlistUrl);
-    const site = siteFromHostname(url.hostname);
-    if (site === "unknown") {
-      throw new Error("Invalid pipeline URL: only YouTube and SoundCloud are supported.");
-    }
-  } catch (e) {
-    const msg = e?.message || String(e);
-    if (msg.startsWith("Invalid pipeline URL:")) {
-      throw e;
-    }
-    throw new Error(`Invalid URL format: ${playlistUrl}`);
+    url = new URL(raw);
+  } catch {
+    throw pipelineError(PIPELINE_ERROR.INVALID_URL, `Invalid URL format: ${playlistUrl}`);
+  }
+
+  if (siteFromHostname(url.hostname) === "unknown") {
+    throw pipelineError(
+      PIPELINE_ERROR.INVALID_URL,
+      "Invalid pipeline URL: only YouTube, SoundCloud, and Spotify are supported."
+    );
   }
 }

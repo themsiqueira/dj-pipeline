@@ -5,17 +5,21 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark light" />
-    <title>YouTube DJ Pipeline</title>
+    <title>DJ Pipeline</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div class="app-shell">
       <header class="app-header">
-        <h1 class="app-title">YouTube DJ Pipeline</h1>
-        <p class="app-subtitle">
-          Download a YouTube or SoundCloud playlist or single track to MP3, normalize loudness, tag, and export
-          Rekordbox XML.
-        </p>
+        <button type="button" id="backBtn" class="btn-back hidden" aria-label="Back to the main menu">
+          <span aria-hidden="true">&#8592;</span>
+        </button>
+        <div class="app-heading">
+          <h1 class="app-title">DJ Pipeline</h1>
+          <p class="app-subtitle" id="appSubtitle">
+            Download tracks or analyze the library you already have, then export it all to Rekordbox.
+          </p>
+        </div>
       </header>
 
       <section id="setupBanner" class="setup-banner hidden" role="alert" aria-live="polite">
@@ -25,26 +29,106 @@
         </div>
       </section>
 
-      <section class="card" aria-labelledby="export-heading">
-        <h2 id="export-heading" class="card-title">Export</h2>
-        <p class="card-lead">Paste a playlist, set, or single-track URL and choose where to save audio and reports.</p>
+      <nav id="homeScreen" class="screen menu" aria-label="What would you like to do?">
+        <button type="button" class="menu-card" data-goto="download">
+          <span class="menu-card-title">Download tracks</span>
+          <span class="menu-card-hint">
+            From a YouTube, SoundCloud or Spotify playlist, album or single track. Normalizes
+            loudness, writes tags and can analyze everything on the way through.
+          </span>
+        </button>
+        <button type="button" class="menu-card" data-goto="local">
+          <span class="menu-card-title">Analyze my library</span>
+          <span class="menu-card-hint">
+            Point at a folder or a single file you already own. Measures BPM, key and energy,
+            classifies the style and writes cue points, editing your files in place.
+          </span>
+        </button>
+        <button type="button" class="menu-card menu-card-quiet" data-goto="settings">
+          <span class="menu-card-title">Settings</span>
+          <span class="menu-card-hint">Output folder, proxy and the optional AI key.</span>
+        </button>
+      </nav>
 
-        <label class="field">
-          <span class="field-label">Playlist or track URL</span>
-          <input
-            type="url"
-            id="playlistUrl"
-            placeholder="YouTube playlist, watch link, or SoundCloud set / track…"
-            autocomplete="url"
-          />
-        </label>
-        <label class="field">
-          <span class="field-label">Output folder</span>
-          <div class="row">
-            <input type="text" id="outputDir" readonly class="input-readonly" aria-readonly="true" />
-            <button type="button" id="browseBtn" class="btn btn-secondary">Browse…</button>
+      <section id="taskScreen" class="screen card hidden" aria-labelledby="taskHeading">
+        <h2 id="taskHeading" class="card-title">Download tracks</h2>
+        <p id="taskLead" class="card-lead"></p>
+
+        <div id="downloadFields">
+          <label class="field">
+            <span class="field-label">Playlist or track URL</span>
+            <input
+              type="url"
+              id="playlistUrl"
+              placeholder="YouTube / SoundCloud / Spotify playlist, album, or track…"
+              autocomplete="url"
+            />
+          </label>
+          <label class="field">
+            <span class="field-label">Audio format</span>
+            <select id="audioFormat">
+              <option value="mp3" selected>MP3 — 320 kbps</option>
+              <option value="flac">FLAC — lossless</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="localFields" class="hidden">
+          <div class="field">
+            <span class="field-label" id="sourcePathLabel">Folder or file to analyze</span>
+            <input
+              type="text"
+              id="sourcePath"
+              readonly
+              class="input-readonly"
+              aria-readonly="true"
+              aria-labelledby="sourcePathLabel"
+              placeholder="Nothing chosen yet"
+            />
+            <div class="row row-buttons">
+              <button type="button" id="pickFolderBtn" class="btn btn-secondary">Choose folder…</button>
+              <button type="button" id="pickFileBtn" class="btn btn-secondary">Choose file…</button>
+            </div>
+            <span class="field-hint">
+              Sub-folders are included. Your files are read and tagged where they are — nothing is
+              copied, converted or moved, and the Rekordbox XML points at your existing library.
+            </span>
           </div>
-        </label>
+        </div>
+
+        <fieldset class="field options-group">
+          <legend class="field-label">DJ analysis</legend>
+          <label class="checkbox-row">
+            <input type="checkbox" id="analyze" />
+            <span>
+              <span class="checkbox-label">Analyze tracks</span>
+              <span class="checkbox-hint" id="analyzeHint"
+                >Detects BPM, key and energy, and writes cue points into the Rekordbox XML. Adds
+                roughly 4% of each track's length.</span
+              >
+            </span>
+          </label>
+          <label class="checkbox-row" id="beatgridRow">
+            <input type="checkbox" id="includeBeatgrid" disabled />
+            <span>
+              <span class="checkbox-label">Also write a beatgrid</span>
+              <span class="checkbox-hint"
+                >Off by default. Rekordbox grids 4/4 tracks well on its own, and an imported grid that is
+                a beat out is harder to fix than none.</span
+              >
+            </span>
+          </label>
+          <label class="checkbox-row" id="setOrderRow">
+            <input type="checkbox" id="setOrder" disabled />
+            <span>
+              <span class="checkbox-label">Suggest a set order</span>
+              <span class="checkbox-hint"
+                >Adds a second playlist to the Rekordbox XML in a suggested running order, and writes
+                set-notes.md with per-transition mixing advice. Your original order is kept.</span
+              >
+            </span>
+          </label>
+        </fieldset>
 
         <div class="actions">
           <button type="button" id="startBtn" class="btn btn-primary">Start</button>
@@ -52,6 +136,16 @@
           <button type="button" id="openBtn" class="btn btn-secondary" disabled>Open output folder</button>
         </div>
 
+        <div
+          id="progressBar"
+          class="progress-bar hidden"
+          role="progressbar"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-labelledby="progress"
+        >
+          <div id="progressFill" class="progress-fill"></div>
+        </div>
         <p id="progress" class="progress" aria-live="polite"></p>
 
         <section id="failuresSection" class="failures-section hidden" aria-label="Failed tracks">
@@ -61,7 +155,62 @@
         </section>
       </section>
 
-      <details class="log-details" id="logDetails" open>
+      <section id="settingsScreen" class="screen card hidden" aria-labelledby="settingsHeading">
+        <h2 id="settingsHeading" class="card-title">Settings</h2>
+        <p class="card-lead">These apply to every run and are remembered between launches.</p>
+
+        <label class="field">
+          <span class="field-label">Output folder</span>
+          <div class="row">
+            <input type="text" id="outputDir" readonly class="input-readonly" aria-readonly="true" />
+            <button type="button" id="browseBtn" class="btn btn-secondary">Browse…</button>
+          </div>
+          <span class="field-hint"
+            >Where downloads, the Rekordbox XML and the set notes are written. Analyzing a local
+            library only writes the XML and notes here.</span
+          >
+        </label>
+
+        <label class="field">
+          <span class="field-label">Proxy (optional)</span>
+          <input type="text" id="proxy" placeholder="socks5://127.0.0.1:1080" autocomplete="off" spellcheck="false" />
+          <span class="field-hint"
+            >Only needed for tracks blocked in your region. Without one, a blocked track is looked up on
+            YouTube instead.</span
+          >
+        </label>
+
+        <fieldset class="field options-group">
+          <legend class="field-label">AI mixing advice (optional)</legend>
+          <p class="field-hint field-hint-block">
+            With a key, the set notes get their transition advice rewritten by an LLM. Only measured
+            numbers are sent — tempo, key, energy and style — never audio, titles, artists or file
+            paths. Without a key everything still works; the advice is written from the rules instead.
+          </p>
+          <label class="field field-nested">
+            <span class="field-label">API key</span>
+            <input
+              type="password"
+              id="aiApiKey"
+              placeholder="sk-…"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <span class="field-hint">Stored in ~/.youtube-dj/config.json, readable only by you.</span>
+          </label>
+          <label class="field field-nested">
+            <span class="field-label">Model</span>
+            <input type="text" id="aiModel" placeholder="gpt-4o-mini" autocomplete="off" spellcheck="false" />
+          </label>
+        </fieldset>
+
+        <div class="actions">
+          <button type="button" id="settingsDoneBtn" class="btn btn-primary">Done</button>
+          <span id="settingsStatus" class="field-hint" aria-live="polite"></span>
+        </div>
+      </section>
+
+      <details class="log-details hidden" id="logDetails" open>
         <summary class="log-summary">Activity log</summary>
         <div id="log" class="log" role="log" aria-label="Pipeline output"></div>
       </details>

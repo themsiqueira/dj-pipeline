@@ -59,6 +59,10 @@ function canUseFfmpegStatic() {
   return hostArch === vendorArch;
 }
 
+function sizeMb(filePath) {
+  return (fs.statSync(filePath).size / 1e6).toFixed(1);
+}
+
 function sha256File(filePath) {
   const h = createHash("sha256");
   h.update(fs.readFileSync(filePath));
@@ -98,73 +102,44 @@ async function downloadToFile(url, destPath) {
   fs.writeFileSync(destPath, buf);
 }
 
-async function fetchBtbNWinArm64GplZip() {
-  const override = process.env.FFMPEG_WIN_ARM64_URL?.trim();
+/**
+ * Prefers the LGPL build over GPL. Verified to still carry libmp3lame, libopus and
+ * libvorbis — the GPL-only additions (x264/x265) are video encoders this pipeline
+ * never invokes. It is also ~109 MB rather than ~136 MB, and every megabyte is
+ * on-access antivirus scanning on the user's first run.
+ *
+ * @param {"win64" | "winarm64"} flavour
+ * @param {string} envVar name of the URL override for the error message
+ */
+async function fetchBtbNWindowsZip(flavour, envVar) {
+  const override = process.env[envVar]?.trim();
   if (override) {
     return override;
   }
-  const r = await fetch("https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest");
-  if (!r.ok) {
-    throw new Error(`BtbN FFmpeg-Builds releases/latest failed: HTTP ${r.status}`);
-  }
-  const j = await r.json();
-  const assets = j.assets || [];
-  const pick =
-    assets.find(
-      (a) =>
-        a.name.endsWith(".zip") &&
-        !a.name.includes("shared") &&
-        a.name.includes("winarm64") &&
-        a.name.includes("gpl") &&
-        a.name.includes("7.1")
-    ) ||
-    assets.find(
-      (a) =>
-        a.name.endsWith(".zip") &&
-        !a.name.includes("shared") &&
-        a.name.includes("winarm64") &&
-        a.name.includes("gpl")
-    );
-  if (!pick) {
-    throw new Error(
-      "No winarm64 GPL zip in BtbN FFmpeg-Builds latest release. Set FFMPEG_WIN_ARM64_URL."
-    );
-  }
-  return pick.browser_download_url;
-}
 
-async function fetchBtbNWin64GplZip() {
-  const override = process.env.FFMPEG_WIN_X64_URL?.trim();
-  if (override) {
-    return override;
-  }
   const r = await fetch("https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest");
   if (!r.ok) {
     throw new Error(`BtbN FFmpeg-Builds releases/latest failed: HTTP ${r.status}`);
   }
-  const j = await r.json();
-  const assets = j.assets || [];
+  const assets = (await r.json()).assets || [];
+
+  const matches = (a, license, pinned) =>
+    a.name.endsWith(".zip") &&
+    !a.name.includes("shared") &&
+    a.name.includes(flavour) &&
+    (flavour === "win64" ? !a.name.includes("winarm64") : true) &&
+    a.name.includes(license) &&
+    (!pinned || a.name.includes("7.1"));
+
   const pick =
-    assets.find(
-      (a) =>
-        a.name.endsWith(".zip") &&
-        !a.name.includes("shared") &&
-        a.name.includes("win64") &&
-        !a.name.includes("winarm64") &&
-        a.name.includes("gpl") &&
-        a.name.includes("7.1")
-    ) ||
-    assets.find(
-      (a) =>
-        a.name.endsWith(".zip") &&
-        !a.name.includes("shared") &&
-        a.name.includes("win64") &&
-        !a.name.includes("winarm64") &&
-        a.name.includes("gpl")
-    );
+    assets.find((a) => matches(a, "lgpl", true)) ||
+    assets.find((a) => matches(a, "lgpl", false)) ||
+    assets.find((a) => matches(a, "gpl", true)) ||
+    assets.find((a) => matches(a, "gpl", false));
+
   if (!pick) {
     throw new Error(
-      "No win64 GPL zip in BtbN FFmpeg-Builds latest release. Set FFMPEG_WIN_X64_URL."
+      `No ${flavour} zip in BtbN FFmpeg-Builds latest release. Set ${envVar}.`
     );
   }
   return pick.browser_download_url;
@@ -225,7 +200,7 @@ async function installFfmpeg() {
     const tmpRoot = fs.mkdtempSync(path.join(path.dirname(vendor), "ffmpeg-fetch-"));
     const zipPath = path.join(tmpRoot, "ffmpeg.zip");
     try {
-      const url = await fetchBtbNWinArm64GplZip();
+      const url = await fetchBtbNWindowsZip("winarm64", "FFMPEG_WIN_ARM64_URL");
       await downloadToFile(url, zipPath);
       const extractDir = path.join(tmpRoot, "out");
       fs.mkdirSync(extractDir, { recursive: true });
@@ -235,7 +210,7 @@ async function installFfmpeg() {
         throw new Error("ffmpeg.exe not found inside Windows ARM64 zip");
       }
       fs.copyFileSync(found, destFf);
-      console.error("Wrote", destFf, "(Windows ARM64 BtbN build)");
+      console.error("Wrote", destFf, `(Windows ARM64 BtbN, ${sizeMb(destFf)} MB)`);
     } finally {
       fs.rmSync(tmpRoot, { recursive: true, force: true });
     }
@@ -246,7 +221,7 @@ async function installFfmpeg() {
     const tmpRoot = fs.mkdtempSync(path.join(path.dirname(vendor), "ffmpeg-fetch-"));
     const zipPath = path.join(tmpRoot, "ffmpeg.zip");
     try {
-      const url = await fetchBtbNWin64GplZip();
+      const url = await fetchBtbNWindowsZip("win64", "FFMPEG_WIN_X64_URL");
       await downloadToFile(url, zipPath);
       const extractDir = path.join(tmpRoot, "out");
       fs.mkdirSync(extractDir, { recursive: true });
@@ -256,7 +231,7 @@ async function installFfmpeg() {
         throw new Error("ffmpeg.exe not found inside Windows x64 zip");
       }
       fs.copyFileSync(found, destFf);
-      console.error("Wrote", destFf, "(Windows x64 BtbN build)");
+      console.error("Wrote", destFf, `(Windows x64 BtbN, ${sizeMb(destFf)} MB)`);
     } finally {
       fs.rmSync(tmpRoot, { recursive: true, force: true });
     }
@@ -269,6 +244,53 @@ async function installFfmpeg() {
       `Build on a machine whose arch matches VENDOR_ARCH, or extend scripts/fetch-native-tools.mjs. ` +
       `Note: Apple Silicon .app with x64 Electron needs VENDOR_ARCH=x64 on an arm64 Mac (Intel ffmpeg zip).`
   );
+}
+
+function tryRun(cmd, args, label) {
+  try {
+    execFileSync(cmd, args, { stdio: ["ignore", "ignore", "pipe"] });
+    return true;
+  } catch (err) {
+    console.error(`  (skipped ${label}: ${String(err?.message || err).split("\n")[0]})`);
+    return false;
+  }
+}
+
+/**
+ * Trims what can be trimmed from the macOS yt-dlp binary's per-exec cost.
+ *
+ * Measured on arm64: `--version` went from ~10.2 s to ~9.8 s, and 38.26 MB to
+ * 37.94 MB. Thinning barely helps because the fat file is mostly a *shared*
+ * PyInstaller payload rather than two full code slices, so the ~10 s is dominated by
+ * re-extracting the Python runtime on every invocation and cannot be fixed here.
+ * Stripping com.apple.quarantine is still worth doing: it removes Gatekeeper's
+ * first-launch assessment on the end user's machine, which this local measurement
+ * (already assessed) does not capture.
+ *
+ * The real fix was to stop invoking yt-dlp three times per track; see
+ * downloadTrackBundle. Shipping the zipapp instead of the PyInstaller build would
+ * remove the remainder, but it needs a Python runtime on the target machine.
+ */
+function optimizeDarwinBinary(binPath) {
+  if (vendorPlatform !== "darwin" || hostPlatform !== "darwin") return;
+
+  tryRun("xattr", ["-d", "com.apple.quarantine", binPath], "quarantine strip");
+
+  // Thinning invalidates the signature, so it has to be re-signed ad-hoc afterwards.
+  const thinned = `${binPath}.thin`;
+  if (tryRun("lipo", [binPath, "-thin", vendorArch, "-output", thinned], `lipo -thin ${vendorArch}`)) {
+    try {
+      fs.renameSync(thinned, binPath);
+      fs.chmodSync(binPath, 0o755);
+    } catch (err) {
+      console.error(`  (thin rename failed: ${err.message})`);
+      fs.rmSync(thinned, { force: true });
+    }
+  } else {
+    fs.rmSync(thinned, { force: true });
+  }
+
+  tryRun("codesign", ["--force", "--sign", "-", binPath], "ad-hoc codesign");
 }
 
 async function fetchYtDlp() {
@@ -295,7 +317,8 @@ async function fetchYtDlp() {
   if (vendorPlatform !== "win32") {
     fs.chmodSync(ytdlpPath, 0o755);
   }
-  console.error("Wrote", ytdlpPath);
+  optimizeDarwinBinary(ytdlpPath);
+  console.error("Wrote", ytdlpPath, `(${(fs.statSync(ytdlpPath).size / 1e6).toFixed(1)} MB)`);
 }
 
 console.error(`Vendor target: ${vendorPlatform}/${vendorArch} (host ${hostPlatform}/${hostArch})`);

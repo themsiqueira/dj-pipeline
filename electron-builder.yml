@@ -1,5 +1,8 @@
+# appId is deliberately unchanged: it is the identity Windows and macOS use to
+# recognise an existing install, so renaming it would strand everyone's settings
+# and turn the next release into a second, parallel application.
 appId: com.youtubedj.pipeline
-productName: YouTube DJ Pipeline
+productName: DJ Pipeline
 icon: build/icon.png
 # Signing / notarization (macOS + Windows Authenticode): https://www.electron.build/code-signing
 # CPU arch is chosen per build via CLI (--arm64 / --x64 / --win --arm64), not both at once,
@@ -29,7 +32,7 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   # Name shown in Settings > Apps > Installed apps (Windows 10/11)
-  uninstallDisplayName: "YouTube DJ Pipeline"
+  uninstallDisplayName: "DJ Pipeline"
   # Stable GUID helps Windows track the same product across upgrades/uninstalls
   guid: 8f3c2a1b-9d4e-5f6a-8b7c-0d1e2f3a4b5c
   createDesktopShortcut: always
